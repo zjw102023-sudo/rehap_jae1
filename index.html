@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>재활 시스템 - 성함 및 담당자 연동 버전</title>
+    <title>재활 시스템 - 깔끔한 디자인 버전</title>
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
         import { getFirestore, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
@@ -115,7 +115,7 @@
                 div.innerHTML = `
                     <div class="category-title">
                         <span class="category-title-text" contenteditable="${window.isAdminMode}" data-old-key="${joint}"
-                              style="${window.isAdminMode ? 'background:#fff; padding:0 5px; border:1px solid #ccc;' : ''}">${joint}</span>
+                              style="${window.isAdminMode ? 'background:#fff; padding:0 5px; border:1px solid #007bff;' : ''}">${joint}</span>
                         <div>
                             ${window.isAdminMode ? `<button class="admin-action-btn" onclick="addExercise('${joint}')">+ 추가</button>` : ''}
                             ${window.isAdminMode ? `<button class="admin-action-btn delete-btn" onclick="deleteCategory('${joint}')">🗑️</button>` : ''}
@@ -161,9 +161,9 @@
                     <div class="page-header">
                         <h1>재활 운동 가이드</h1>
                         <div class="patient-info">
-                            환자 성함: <span>${patientName}</span>님<br>
-                            담당 치료사: <span>${therapistName}</span> 선생님<br>
-                            날짜: <span>${new Date().toLocaleDateString()}</span>
+                            환자 성함: <span class="info-val">${patientName}</span>님<br>
+                            담당 치료사: <span class="info-val">${therapistName}</span> 선생님<br>
+                            날짜: <span class="info-val">${new Date().toLocaleDateString()}</span>
                         </div>
                     </div>` : `<div class="page-header empty-header"></div>`;
                 const joint = item.joint;
@@ -200,21 +200,28 @@
         .admin-btn.save { background: #007bff; color: white; border: none; }
         .print-btn-fixed { position: fixed; top: 15px; right: 25px; z-index: 1000; padding: 10px 20px; background: #007bff; color: #fff; font-weight: bold; border-radius: 50px; border: none; cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.3); }
         .a4-page { width: 297mm; height: 210mm; background: #fff; margin-bottom: 20px; padding: 8mm 15mm 15mm 15mm; box-sizing: border-box; display: flex; flex-direction: column; }
-        .page-header { height: 18mm; border-bottom: 2.5px solid #333; display: flex; justify-content: space-between; align-items: flex-end; padding-bottom: 5px; margin-bottom: 4mm; }
-        .page-header h1 { margin: 0; font-size: 22pt; }
-        .patient-info { text-align: right; font-size: 10.5pt; line-height: 1.4; }
-        .patient-info span { border-bottom: 1px solid #000; padding: 0 5px; min-width: 60px; display: inline-block; text-align: center; }
-        .page-content { flex: 1; display: flex; gap: 30px; border: 2px solid #ddd; padding: 20px; border-radius: 8px; background: #fdfdfd; }
-        .exercise-img { width: 65%; object-fit: contain; background: #fff; border: 1px solid #eee; border-radius: 8px; }
+        
+        /* 헤더 부분 밑줄 제거 및 정돈 */
+        .page-header { height: 18mm; border-bottom: 3px solid #333; display: flex; justify-content: space-between; align-items: flex-end; padding-bottom: 8px; margin-bottom: 6mm; }
+        .page-header h1 { margin: 0; font-size: 24pt; font-weight: 800; color: #333; }
+        .patient-info { text-align: right; font-size: 11pt; line-height: 1.5; color: #444; }
+        .info-val { font-weight: bold; color: #000; padding: 0 2px; border-bottom: none !important; } /* 밑줄 완전 제거 */
+
+        .page-content { flex: 1; display: flex; gap: 30px; border: 1px solid #eee; padding: 15px; border-radius: 12px; background: #fff; }
+        .exercise-img { width: 65%; object-fit: contain; background: #fff; border: 1px solid #f0f0f0; border-radius: 10px; }
         .exercise-details { width: 35%; display: flex; flex-direction: column; }
-        .exercise-details h3 { margin: 0 0 15px 0; font-size: 18pt; color: #0056b3; border-bottom: 3px solid #0056b3; padding-bottom: 8px; }
-        .editable-desc { flex: 1; font-size: 10.5pt; line-height: 1.6; padding: 12px; background: #fffbe6; border: 2px dashed #ffd666; border-radius: 8px; overflow-y: auto; }
-        .save-btn { margin-top: 10px; padding: 8px; background: #52c41a; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; }
+        
+        /* 운동 제목 부분 밑줄 제거 */
+        .exercise-details h3 { margin: 0 0 15px 0; font-size: 19pt; color: #0056b3; font-weight: bold; border-bottom: none; } 
+        .editable-desc { flex: 1; font-size: 10.8pt; line-height: 1.7; padding: 15px; background: #fdfdfd; border: 1px solid #eee; border-radius: 10px; overflow-y: auto; }
+        .save-btn { margin-top: 10px; padding: 8px; background: #52c41a; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; }
+
         @media print {
             @page { size: A4 landscape; margin: 0; }
             #sidebar, .print-btn-fixed, .save-btn, .no-print { display: none !important; }
             #preview-area { margin: 0; padding: 0; width: 100%; }
-            .a4-page { width: 100vw; height: 100vh; margin: 0; page-break-after: always; box-shadow: none; }
+            .a4-page { width: 100vw; height: 100vh; margin: 0; page-break-after: always; box-shadow: none; border: none; }
+            .page-content { border: 1px solid #ddd; }
             .editable-desc { background: none; border: none; padding: 0; }
         }
     </style>
@@ -222,14 +229,14 @@
 <body>
     <button class="print-btn-fixed no-print" onclick="window.print()">🖨️ 가이드 인쇄</button>
     <div id="sidebar">
-        <h2>재활 설정</h2>
+        <h2 style="font-size: 1.2rem; margin-bottom: 20px; border-bottom: 2px solid #007bff; padding-bottom: 10px;">재활 가이드 설정</h2>
         <div style="margin-bottom:15px;">
-            <label style="font-size: 12px; color: #666;">환자 성함</label>
-            <input type="text" id="patientNameInput" placeholder="환자 이름 입력" oninput="renderPreview()" style="width:100%; padding:8px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px;">
+            <label style="font-size: 11px; font-weight: bold; color: #777;">환자 성함</label>
+            <input type="text" id="patientNameInput" placeholder="이름 입력" oninput="renderPreview()" style="width:100%; padding:10px; box-sizing: border-box; border: 1px solid #ddd; border-radius: 6px;">
         </div>
-        <div style="margin-bottom:15px;">
-            <label style="font-size: 12px; color: #666;">담당 치료사</label>
-            <input type="text" id="therapistNameInput" placeholder="치료사 이름 입력" oninput="renderPreview()" style="width:100%; padding:8px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px;">
+        <div style="margin-bottom:20px;">
+            <label style="font-size: 11px; font-weight: bold; color: #777;">담당 치료사</label>
+            <input type="text" id="therapistNameInput" placeholder="치료사 성함" oninput="renderPreview()" style="width:100%; padding:10px; box-sizing: border-box; border: 1px solid #ddd; border-radius: 6px;">
         </div>
         <div id="controls"></div>
         <div id="admin-area" class="no-print"></div>
