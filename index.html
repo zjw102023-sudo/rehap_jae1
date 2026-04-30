@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>재활 시스템 - 사진 확대 및 대제목 수정 버전</title>
+    <title>재활 시스템 - 성함 및 담당자 연동 버전</title>
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
         import { getFirestore, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
@@ -19,11 +19,7 @@
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
 
-        let defaultData = {
-            "목": ["경추 스트레칭", "맥켄지 운동"],
-            "어깨": ["진자 운동", "벽 밀기"]
-        };
-
+        let defaultData = { "목": ["경추 스트레칭"], "어깨": ["진자 운동"] };
         window.exerciseData = {};
         window.exerciseDescriptions = {};
         window.isAdminMode = false; 
@@ -34,13 +30,10 @@
                 const listRef = doc(db, "settings", "exerciseList");
                 const listSnap = await getDoc(listRef);
                 window.exerciseData = listSnap.exists() ? listSnap.data() : defaultData;
-
                 const descRef = doc(db, "settings", "exerciseDescriptions");
                 const descSnap = await getDoc(descRef);
                 if (descSnap.exists()) window.exerciseDescriptions = descSnap.data();
-            } catch (e) { 
-                window.exerciseData = defaultData;
-            }
+            } catch (e) { window.exerciseData = defaultData; }
             renderControls();
             renderPreview();
         }
@@ -56,7 +49,7 @@
                 });
                 window.exerciseData = newData;
                 await setDoc(doc(db, "settings", "exerciseList"), window.exerciseData);
-                alert("부위 명칭과 목록이 모두 저장되었습니다!");
+                alert("목록이 저장되었습니다!");
                 window.isAdminMode = false;
                 renderControls();
             } catch (e) { alert("저장 실패!"); }
@@ -72,44 +65,35 @@
             } catch (e) { alert("저장 실패!"); }
         }
 
-        window.toggleAdmin = function() {
-            window.isAdminMode = !window.isAdminMode;
-            renderControls();
-        }
+        window.toggleAdmin = function() { window.isAdminMode = !window.isAdminMode; renderControls(); }
 
         window.addCategory = function() {
             const name = prompt("새로운 부위 이름을 입력하세요");
             if (name && name.trim() !== '' && !window.exerciseData[name]) {
-                window.exerciseData[name] = [];
-                renderControls();
+                window.exerciseData[name] = []; renderControls();
             }
         }
 
         window.deleteCategory = function(joint) {
-            if(confirm(`[${joint}] 부위를 삭제하시겠습니까?`)) {
+            if(confirm(`[${joint}] 삭제하시겠습니까?`)) {
                 window.selectedExercises = window.selectedExercises.filter(ex => ex.joint !== joint);
-                delete window.exerciseData[joint];
-                renderControls();
-                renderPreview();
+                delete window.exerciseData[joint]; renderControls(); renderPreview();
             }
         }
 
         window.addExercise = function(joint) {
             const name = prompt(`${joint}에 추가할 운동 이름`);
             if (name && name.trim() !== '') {
-                window.exerciseData[joint].push(name.trim());
-                renderControls();
+                window.exerciseData[joint].push(name.trim()); renderControls();
             }
         }
 
         window.deleteExercise = function(joint, index) {
-            if(confirm("이 운동을 삭제하시겠습니까?")) {
+            if(confirm("삭제하시겠습니까?")) {
                 const name = window.exerciseData[joint][index];
                 const id = `${joint}_${name}`;
                 window.selectedExercises = window.selectedExercises.filter(ex => ex.id !== id);
-                window.exerciseData[joint].splice(index, 1);
-                renderControls();
-                renderPreview();
+                window.exerciseData[joint].splice(index, 1); renderControls(); renderPreview();
             }
         }
 
@@ -130,9 +114,7 @@
                 div.className = 'category-box';
                 div.innerHTML = `
                     <div class="category-title">
-                        <span class="category-title-text" 
-                              contenteditable="${window.isAdminMode}" 
-                              data-old-key="${joint}"
+                        <span class="category-title-text" contenteditable="${window.isAdminMode}" data-old-key="${joint}"
                               style="${window.isAdminMode ? 'background:#fff; padding:0 5px; border:1px solid #ccc;' : ''}">${joint}</span>
                         <div>
                             ${window.isAdminMode ? `<button class="admin-action-btn" onclick="addExercise('${joint}')">+ 추가</button>` : ''}
@@ -166,6 +148,7 @@
         window.renderPreview = function() {
             const container = document.getElementById('page-container');
             const patientName = document.getElementById('patientNameInput').value || "________";
+            const therapistName = document.getElementById('therapistNameInput').value || "________";
             container.innerHTML = "";
             if (window.selectedExercises.length === 0) {
                 container.innerHTML = `<div class="a4-page no-print" style="display:flex; justify-content:center; align-items:center;"><p style="color: #999;">운동을 선택해 주세요.</p></div>`;
@@ -174,7 +157,15 @@
             window.selectedExercises.forEach((item, index) => {
                 const page = document.createElement('div');
                 page.className = 'a4-page';
-                let headerHtml = (index === 0) ? `<div class="page-header"><h1>재활 운동 가이드</h1><div class="patient-info">성함: <span>${patientName}</span><br>날짜: <span>${new Date().toLocaleDateString()}</span></div></div>` : `<div class="page-header empty-header"></div>`;
+                let headerHtml = (index === 0) ? `
+                    <div class="page-header">
+                        <h1>재활 운동 가이드</h1>
+                        <div class="patient-info">
+                            환자 성함: <span>${patientName}</span>님<br>
+                            담당 치료사: <span>${therapistName}</span> 선생님<br>
+                            날짜: <span>${new Date().toLocaleDateString()}</span>
+                        </div>
+                    </div>` : `<div class="page-header empty-header"></div>`;
                 const joint = item.joint;
                 const name = item.name;
                 const id = item.id;
@@ -201,30 +192,24 @@
         #preview-area { margin-left: 300px; padding: 20px; width: calc(100% - 300px); display: flex; flex-direction: column; align-items: center; }
         .category-box { background: #f4f4f4; padding: 12px; margin-bottom: 12px; border-radius: 8px; }
         .category-title { font-weight: bold; color: #007bff; display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; border-bottom: 1px solid #ddd; padding-bottom: 5px; font-size: 15px; }
-        .category-title-text[contenteditable="true"] { outline: 2px solid #007bff; min-width: 50px; }
         .exercise-item { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
         .checkbox-label { display: flex; align-items: center; gap: 8px; cursor: pointer; flex: 1; font-size: 14px; }
         .admin-action-btn { background: #e9ecef; border: 1px solid #ccc; border-radius: 4px; padding: 2px 6px; font-size: 11px; cursor: pointer; }
-        .admin-action-btn.delete-btn { color: #dc3545; margin-left: 4px; }
         .admin-del-btn { background: none; border: none; cursor: pointer; color: #dc3545; font-size: 12px; }
         .admin-btn { width: 100%; padding: 12px; margin-top: 8px; border-radius: 6px; border: 1px solid #ccc; cursor: pointer; font-size: 13px; font-weight: bold; }
         .admin-btn.save { background: #007bff; color: white; border: none; }
         .print-btn-fixed { position: fixed; top: 15px; right: 25px; z-index: 1000; padding: 10px 20px; background: #007bff; color: #fff; font-weight: bold; border-radius: 50px; border: none; cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.3); }
         .a4-page { width: 297mm; height: 210mm; background: #fff; margin-bottom: 20px; padding: 8mm 15mm 15mm 15mm; box-sizing: border-box; display: flex; flex-direction: column; }
-        .page-header { height: 12mm; border-bottom: 2.5px solid #333; display: flex; justify-content: space-between; align-items: flex-end; padding-bottom: 3px; margin-bottom: 4mm; }
+        .page-header { height: 18mm; border-bottom: 2.5px solid #333; display: flex; justify-content: space-between; align-items: flex-end; padding-bottom: 5px; margin-bottom: 4mm; }
         .page-header h1 { margin: 0; font-size: 22pt; }
-        .patient-info { text-align: right; font-size: 11pt; }
-        .patient-info span { border-bottom: 1px solid #000; padding: 0 5px; }
-        
-        /* 사진 6.5 : 글 3.5 비율 조정 부분 */
+        .patient-info { text-align: right; font-size: 10.5pt; line-height: 1.4; }
+        .patient-info span { border-bottom: 1px solid #000; padding: 0 5px; min-width: 60px; display: inline-block; text-align: center; }
         .page-content { flex: 1; display: flex; gap: 30px; border: 2px solid #ddd; padding: 20px; border-radius: 8px; background: #fdfdfd; }
         .exercise-img { width: 65%; object-fit: contain; background: #fff; border: 1px solid #eee; border-radius: 8px; }
         .exercise-details { width: 35%; display: flex; flex-direction: column; }
-        
         .exercise-details h3 { margin: 0 0 15px 0; font-size: 18pt; color: #0056b3; border-bottom: 3px solid #0056b3; padding-bottom: 8px; }
         .editable-desc { flex: 1; font-size: 10.5pt; line-height: 1.6; padding: 12px; background: #fffbe6; border: 2px dashed #ffd666; border-radius: 8px; overflow-y: auto; }
         .save-btn { margin-top: 10px; padding: 8px; background: #52c41a; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; }
-        
         @media print {
             @page { size: A4 landscape; margin: 0; }
             #sidebar, .print-btn-fixed, .save-btn, .no-print { display: none !important; }
@@ -238,7 +223,14 @@
     <button class="print-btn-fixed no-print" onclick="window.print()">🖨️ 가이드 인쇄</button>
     <div id="sidebar">
         <h2>재활 설정</h2>
-        <input type="text" id="patientNameInput" placeholder="환자 성함 입력" oninput="renderPreview()" style="width:100%; padding:10px; margin-bottom:15px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px;">
+        <div style="margin-bottom:15px;">
+            <label style="font-size: 12px; color: #666;">환자 성함</label>
+            <input type="text" id="patientNameInput" placeholder="환자 이름 입력" oninput="renderPreview()" style="width:100%; padding:8px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px;">
+        </div>
+        <div style="margin-bottom:15px;">
+            <label style="font-size: 12px; color: #666;">담당 치료사</label>
+            <input type="text" id="therapistNameInput" placeholder="치료사 이름 입력" oninput="renderPreview()" style="width:100%; padding:8px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px;">
+        </div>
         <div id="controls"></div>
         <div id="admin-area" class="no-print"></div>
     </div>
