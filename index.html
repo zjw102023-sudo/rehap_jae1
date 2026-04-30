@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>재활 시스템 - 대제목 수기 수정 버전</title>
+    <title>재활 시스템 - 사진 확대 및 대제목 수정 버전</title>
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
         import { getFirestore, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
@@ -45,22 +45,17 @@
             renderPreview();
         }
 
-        // 전체 목록 저장 (부위 이름 변경 포함)
         window.saveExerciseList = async function() {
             try {
-                // 현재 화면에 입력된 부위 이름들로 데이터 최종 업데이트
                 const categoryTitles = document.querySelectorAll('.category-title-text');
                 const newData = {};
-                
                 categoryTitles.forEach(titleSpan => {
                     const oldKey = titleSpan.getAttribute('data-old-key');
                     const newKey = titleSpan.innerText.trim();
                     newData[newKey] = window.exerciseData[oldKey];
                 });
-
                 window.exerciseData = newData;
                 await setDoc(doc(db, "settings", "exerciseList"), window.exerciseData);
-                
                 alert("부위 명칭과 목록이 모두 저장되었습니다!");
                 window.isAdminMode = false;
                 renderControls();
@@ -130,11 +125,9 @@
         function renderControls() {
             const controls = document.getElementById('controls');
             controls.innerHTML = "";
-            
             for (const [joint, exercises] of Object.entries(window.exerciseData)) {
                 const div = document.createElement('div');
                 div.className = 'category-box';
-                
                 div.innerHTML = `
                     <div class="category-title">
                         <span class="category-title-text" 
@@ -147,7 +140,6 @@
                         </div>
                     </div>
                 `;
-                
                 exercises.forEach((ex, idx) => {
                     const labelDiv = document.createElement('div');
                     labelDiv.className = 'exercise-item';
@@ -163,7 +155,6 @@
                 });
                 controls.appendChild(div);
             }
-            
             const adminArea = document.getElementById('admin-area');
             adminArea.innerHTML = window.isAdminMode ? 
                 `<button class="admin-btn save" onclick="saveExerciseList()">💾 명칭 수정 및 목록 전체 저장</button>
@@ -218,19 +209,22 @@
         .admin-del-btn { background: none; border: none; cursor: pointer; color: #dc3545; font-size: 12px; }
         .admin-btn { width: 100%; padding: 12px; margin-top: 8px; border-radius: 6px; border: 1px solid #ccc; cursor: pointer; font-size: 13px; font-weight: bold; }
         .admin-btn.save { background: #007bff; color: white; border: none; }
-        .admin-btn.add { background: #28a745; color: white; border: none; }
         .print-btn-fixed { position: fixed; top: 15px; right: 25px; z-index: 1000; padding: 10px 20px; background: #007bff; color: #fff; font-weight: bold; border-radius: 50px; border: none; cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.3); }
         .a4-page { width: 297mm; height: 210mm; background: #fff; margin-bottom: 20px; padding: 8mm 15mm 15mm 15mm; box-sizing: border-box; display: flex; flex-direction: column; }
         .page-header { height: 12mm; border-bottom: 2.5px solid #333; display: flex; justify-content: space-between; align-items: flex-end; padding-bottom: 3px; margin-bottom: 4mm; }
         .page-header h1 { margin: 0; font-size: 22pt; }
         .patient-info { text-align: right; font-size: 11pt; }
         .patient-info span { border-bottom: 1px solid #000; padding: 0 5px; }
+        
+        /* 사진 6.5 : 글 3.5 비율 조정 부분 */
         .page-content { flex: 1; display: flex; gap: 30px; border: 2px solid #ddd; padding: 20px; border-radius: 8px; background: #fdfdfd; }
-        .exercise-img { width: 45%; object-fit: contain; background: #fff; border: 1px solid #eee; }
-        .exercise-details { width: 55%; display: flex; flex-direction: column; }
+        .exercise-img { width: 65%; object-fit: contain; background: #fff; border: 1px solid #eee; border-radius: 8px; }
+        .exercise-details { width: 35%; display: flex; flex-direction: column; }
+        
         .exercise-details h3 { margin: 0 0 15px 0; font-size: 18pt; color: #0056b3; border-bottom: 3px solid #0056b3; padding-bottom: 8px; }
-        .editable-desc { flex: 1; font-size: 11pt; line-height: 1.6; padding: 15px; background: #fffbe6; border: 2px dashed #ffd666; border-radius: 8px; overflow-y: auto; }
+        .editable-desc { flex: 1; font-size: 10.5pt; line-height: 1.6; padding: 12px; background: #fffbe6; border: 2px dashed #ffd666; border-radius: 8px; overflow-y: auto; }
         .save-btn { margin-top: 10px; padding: 8px; background: #52c41a; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; }
+        
         @media print {
             @page { size: A4 landscape; margin: 0; }
             #sidebar, .print-btn-fixed, .save-btn, .no-print { display: none !important; }
