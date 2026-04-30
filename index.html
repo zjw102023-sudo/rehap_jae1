@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>재활 시스템 - 자동 페이지 번호 버전</title>
+    <title>재활 시스템 - 하단 페이지 번호 버전</title>
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
         import { getFirestore, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
@@ -161,7 +161,7 @@
                 const page = document.createElement('div');
                 page.className = 'a4-page';
                 
-                // 페이지 번호 HTML (전체 페이지 수 포함)
+                // 페이지 번호 (오른쪽 하단 배치용)
                 const pageNumHtml = `<div class="page-num-indicator">${index + 1} / ${totalPages}</div>`;
                 
                 let headerHtml = (index === 0) ? `
@@ -178,7 +178,6 @@
                 const desc = window.exerciseDescriptions[id] || `<strong>운동 목적:</strong> ${joint} 부위 기능 회복<br><br><strong>수행 방법:</strong> 10~15회씩 3세트 반복하세요.`;
                 
                 page.innerHTML = `
-                    ${pageNumHtml}
                     ${headerHtml}
                     <div class="page-content">
                         <img src="https://via.placeholder.com/600x600?text=${joint}+Exercise" class="exercise-img">
@@ -188,6 +187,7 @@
                             <button class="no-print save-btn" onclick="saveDescription('${id}', document.getElementById('desc_${id}').innerHTML)">💾 설명 저장</button>
                         </div>
                     </div>
+                    ${pageNumHtml}
                 `;
                 container.appendChild(page);
             });
@@ -208,9 +208,11 @@
         .admin-btn.save { background: #007bff; color: white; border: none; }
         .print-btn-fixed { position: fixed; top: 15px; right: 25px; z-index: 1000; padding: 10px 20px; background: #007bff; color: #fff; font-weight: bold; border-radius: 50px; border: none; cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.3); }
         
-        /* 페이지 설정 및 자동 번호 디자인 */
-        .a4-page { width: 297mm; height: 210mm; background: #fff; margin-bottom: 20px; padding: 12mm 15mm 15mm 15mm; box-sizing: border-box; display: flex; flex-direction: column; position: relative; }
-        .page-num-indicator { position: absolute; top: 7mm; right: 15mm; font-size: 10pt; color: #888; font-weight: 500; }
+        /* A4 레이아웃 및 페이지 번호 하단 배치 */
+        .a4-page { width: 297mm; height: 210mm; background: #fff; margin-bottom: 20px; padding: 10mm 15mm 15mm 15mm; box-sizing: border-box; display: flex; flex-direction: column; position: relative; }
+        
+        /* ★ 페이지 번호 위치: 오른쪽 하단 구석 ★ */
+        .page-num-indicator { position: absolute; bottom: 8mm; right: 15mm; font-size: 9pt; color: #bbb; font-weight: 400; }
         
         .page-header { border-bottom: 3px solid #333; display: flex; justify-content: space-between; align-items: center; padding-bottom: 10px; margin-bottom: 8mm; }
         .page-header h1 { margin: 0; font-size: 26pt; font-weight: 800; color: #333; }
@@ -231,6 +233,7 @@
             .a4-page { width: 100vw; height: 100vh; margin: 0; page-break-after: always; box-shadow: none; border: none; }
             .page-content { border: 1px solid #ddd; }
             .editable-desc { background: none; border: none; padding: 0; }
+            .page-num-indicator { color: #888; } /* 인쇄 시 조금 더 진하게 표시 */
         }
     </style>
 </head>
