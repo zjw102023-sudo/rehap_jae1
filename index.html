@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>재활 시스템 - 깔끔한 디자인 버전</title>
+    <title>재활 시스템 - 날짜 제거 심플 버전</title>
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
         import { getFirestore, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
@@ -161,9 +161,7 @@
                     <div class="page-header">
                         <h1>재활 운동 가이드</h1>
                         <div class="patient-info">
-                            환자 성함: <span class="info-val">${patientName}</span>님<br>
-                            담당 치료사: <span class="info-val">${therapistName}</span> 선생님<br>
-                            날짜: <span class="info-val">${new Date().toLocaleDateString()}</span>
+                            환자 성함: <span class="info-val">${patientName}</span>님 / 담당 치료사: <span class="info-val">${therapistName}</span>
                         </div>
                     </div>` : `<div class="page-header empty-header"></div>`;
                 const joint = item.joint;
@@ -199,21 +197,19 @@
         .admin-btn { width: 100%; padding: 12px; margin-top: 8px; border-radius: 6px; border: 1px solid #ccc; cursor: pointer; font-size: 13px; font-weight: bold; }
         .admin-btn.save { background: #007bff; color: white; border: none; }
         .print-btn-fixed { position: fixed; top: 15px; right: 25px; z-index: 1000; padding: 10px 20px; background: #007bff; color: #fff; font-weight: bold; border-radius: 50px; border: none; cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.3); }
-        .a4-page { width: 297mm; height: 210mm; background: #fff; margin-bottom: 20px; padding: 8mm 15mm 15mm 15mm; box-sizing: border-box; display: flex; flex-direction: column; }
+        .a4-page { width: 297mm; height: 210mm; background: #fff; margin-bottom: 20px; padding: 10mm 15mm 15mm 15mm; box-sizing: border-box; display: flex; flex-direction: column; }
         
-        /* 헤더 부분 밑줄 제거 및 정돈 */
-        .page-header { height: 18mm; border-bottom: 3px solid #333; display: flex; justify-content: space-between; align-items: flex-end; padding-bottom: 8px; margin-bottom: 6mm; }
-        .page-header h1 { margin: 0; font-size: 24pt; font-weight: 800; color: #333; }
-        .patient-info { text-align: right; font-size: 11pt; line-height: 1.5; color: #444; }
-        .info-val { font-weight: bold; color: #000; padding: 0 2px; border-bottom: none !important; } /* 밑줄 완전 제거 */
+        /* 날짜가 빠진 더 심플한 헤더 */
+        .page-header { border-bottom: 3px solid #333; display: flex; justify-content: space-between; align-items: center; padding-bottom: 10px; margin-bottom: 8mm; }
+        .page-header h1 { margin: 0; font-size: 26pt; font-weight: 800; color: #333; }
+        .patient-info { text-align: right; font-size: 13pt; color: #444; }
+        .info-val { font-weight: bold; color: #000; }
 
         .page-content { flex: 1; display: flex; gap: 30px; border: 1px solid #eee; padding: 15px; border-radius: 12px; background: #fff; }
         .exercise-img { width: 65%; object-fit: contain; background: #fff; border: 1px solid #f0f0f0; border-radius: 10px; }
         .exercise-details { width: 35%; display: flex; flex-direction: column; }
-        
-        /* 운동 제목 부분 밑줄 제거 */
-        .exercise-details h3 { margin: 0 0 15px 0; font-size: 19pt; color: #0056b3; font-weight: bold; border-bottom: none; } 
-        .editable-desc { flex: 1; font-size: 10.8pt; line-height: 1.7; padding: 15px; background: #fdfdfd; border: 1px solid #eee; border-radius: 10px; overflow-y: auto; }
+        .exercise-details h3 { margin: 0 0 15px 0; font-size: 20pt; color: #0056b3; font-weight: bold; } 
+        .editable-desc { flex: 1; font-size: 11pt; line-height: 1.7; padding: 15px; background: #fdfdfd; border: 1px solid #eee; border-radius: 10px; overflow-y: auto; }
         .save-btn { margin-top: 10px; padding: 8px; background: #52c41a; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; }
 
         @media print {
