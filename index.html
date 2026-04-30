@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>재활 시스템 - 디자인 및 버그 수정 완료본</title>
+    <title>재활 시스템 - 방탄 사진 복붙 버전</title>
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
         import { getFirestore, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
@@ -69,12 +69,21 @@
         }
 
         window.saveImageUrl = async function(id) {
-            const newUrl = prompt("이미지 주소를 입력하세요:", window.exerciseImages[id] || "");
+            let newUrl = prompt("이미지 주소를 입력하세요:", window.exerciseImages[id] || "");
             if (newUrl !== null) {
+                // 방탄 코드: 사용자가 HTML 코드를 통째로 복붙해도 사진 주소만 쏙 빼냅니다!
+                const srcMatch = newUrl.match(/src=["'](https?:\/\/[^"']+)["']/);
+                if (srcMatch) {
+                    newUrl = srcMatch[1]; 
+                } else {
+                    const urlMatch = newUrl.match(/https?:\/\/[^"'\s>]+/);
+                    if (urlMatch) newUrl = urlMatch[0]; 
+                }
+
                 try {
                     await setDoc(doc(db, "settings", "exerciseImages"), { [id]: newUrl }, { merge: true });
                     window.exerciseImages[id] = newUrl;
-                    alert("사진이 저장되었습니다!");
+                    alert("사진이 성공적으로 저장되었습니다!");
                     renderPreview();
                 } catch (e) { alert("저장 실패!"); }
             }
@@ -160,7 +169,6 @@
                 const desc = window.exerciseDescriptions[id] || "설명을 입력하세요.";
                 const imgSrc = window.exerciseImages[id] || "";
                 
-                // 이미지가 없을 때 인쇄본에서 박스가 보이지 않게 처리
                 const imgHtml = imgSrc ? `<img src="${imgSrc}" class="exercise-img">` : `<div class="no-img-placeholder">이미지를 등록해 주세요</div>`;
 
                 page.innerHTML = `
@@ -196,14 +204,13 @@
         .admin-btn { width: 100%; padding: 10px; margin-top: 5px; cursor: pointer; border-radius: 5px; border: 1px solid #ddd; }
         .admin-btn.save { background: #007bff; color: #fff; border: none; }
         
-        /* A4 레이아웃 및 사진 크기 수정 */
         .a4-page { width: 297mm; height: 210mm; background: #fff; margin-bottom: 20px; padding: 15mm; box-sizing: border-box; display: flex; flex-direction: column; position: relative; box-shadow: 0 0 10px rgba(0,0,0,0.5); }
         .page-header { border-bottom: 3px solid #333; display: flex; justify-content: space-between; align-items: center; padding-bottom: 10px; margin-bottom: 10mm; }
         .page-header h1 { margin: 0; font-size: 28pt; }
         .page-content { flex: 1; display: flex; gap: 30px; overflow: hidden; }
         
         .img-wrap { width: 65%; height: 100%; display: flex; align-items: center; justify-content: center; background: #fafafa; border-radius: 12px; position: relative; overflow: hidden; border: 1px solid #eee; }
-        .exercise-img { max-width: 100%; max-height: 100%; object-fit: contain; } /* 사진이 칸을 절대 안넘어가게 함 */
+        .exercise-img { max-width: 100%; max-height: 100%; object-fit: contain; } 
         .no-img-placeholder { color: #ccc; font-size: 14px; }
         
         .exercise-details { width: 35%; display: flex; flex-direction: column; }
@@ -221,7 +228,7 @@
             #preview-area { margin: 0; padding: 0; width: 100%; }
             .a4-page { width: 100vw; height: 100vh; margin: 0; box-shadow: none; page-break-after: always; }
             .img-wrap { border: none; background: none; }
-            .no-img-placeholder { display: none; } /* 인쇄 시 빈 이미지 칸 숨김 */
+            .no-img-placeholder { display: none; } 
         }
     </style>
 </head>
