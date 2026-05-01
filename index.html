@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>재활 시스템 - 원버튼 저장 및 폴더 버그 픽스</title>
+    <title>재활 시스템 - 폴더 생성 버그 픽스 완벽판</title>
     
     <style id="dynamic-print-style">
         @media print { @page { size: landscape; margin: 0; } }
@@ -55,12 +55,10 @@
                 const listSnap = await getDoc(doc(db, "settings", "exerciseList"));
                 let rawData = listSnap.exists() ? listSnap.data() : {};
                 
-                // 🌟 기본 7대 카테고리 자동 추가 로직 🌟
                 const requiredCategories = ["목", "어깨", "팔꿈치", "손목", "허리", "무릎", "발목"];
                 requiredCategories.forEach(cat => {
                     if (!rawData[cat]) rawData[cat] = { "스트레칭": [], "운동": [] };
                 });
-                // 구버전 배열 데이터 폴더화
                 for (let key in rawData) { if (Array.isArray(rawData[key])) { rawData[key] = { "스트레칭": rawData[key], "운동": [] }; } }
                 window.exerciseData = rawData;
 
@@ -201,8 +199,18 @@
             }
         }
 
+        // 🌟 버그 해결의 핵심: 검색창이 비어있으면 모든 폴더를 보이게 예외처리 🌟
         window.filterExercises = function() {
             const keyword = document.getElementById('searchEx').value.toLowerCase().trim();
+            
+            // 검색어가 없으면 무조건 싹 다 보여줌 (빈 폴더 숨김 방지)
+            if (keyword === "") {
+                document.querySelectorAll('.exercise-item').forEach(item => item.style.display = 'flex');
+                document.querySelectorAll('.folder-box').forEach(box => box.style.display = 'block');
+                document.querySelectorAll('.category-box').forEach(box => box.style.display = 'block');
+                return;
+            }
+
             document.querySelectorAll('.exercise-item').forEach(item => {
                 const text = item.innerText.toLowerCase();
                 item.style.display = text.includes(keyword) ? 'flex' : 'none';
@@ -217,7 +225,6 @@
             });
         };
 
-        // 🌟 수정 중인 DOM을 실시간으로 Data에 동기화하는 함수 (버그 해결의 핵심) 🌟
         function syncDOMtoData() {
             if (!window.isAdminMode) return;
             const categories = document.querySelectorAll('.category-box');
@@ -243,16 +250,13 @@
             window.exerciseData = newData;
         }
 
-        // 🌟 원버튼 통합 로직: 수정 모드 진입/저장/종료를 버튼 하나로 처리 🌟
         window.toggleAdmin = async function() { 
             if (window.isAdminMode) {
-                // 수정 완료(저장) 상태일 때 누름 -> 데이터 동기화 후 파이어베이스에 저장
                 syncDOMtoData();
                 await setDoc(doc(db, "settings", "exerciseList"), window.exerciseData);
-                // alert("목록이 성공적으로 저장되었습니다."); // 알림창 생략 시 주석 처리
                 window.isAdminMode = false;
             } else {
-                // 수정 모드 진입
+                document.getElementById('searchEx').value = ""; // 수정 모드 진입 시 검색창 싹 비움
                 window.isAdminMode = true; 
             }
             renderControls(); 
@@ -261,7 +265,6 @@
             btn.style.background = window.isAdminMode ? "#dc3545" : "#6c757d";
         };
 
-        // 🌟 DOM 동기화를 거치는 안전한 요소 추가/삭제 함수들 🌟
         window.addCategory = function() { 
             syncDOMtoData();
             const n = prompt("추가할 부위명:"); 
@@ -353,7 +356,6 @@
                     }); div.appendChild(fDiv);
                 } c.appendChild(div);
             }
-            // 기존 '명칭 저장' 버튼을 없애고 통합 버튼만 살림
             document.getElementById('admin-area').innerHTML = window.isAdminMode ? `<button class="admin-btn" onclick="addCategory()" style="background:#28a745; color:white; padding:12px; font-size:14px; margin-top:10px;">➕ 대분류(부위) 추가</button>` : '';
             filterExercises();
         }
@@ -433,7 +435,7 @@
         .mode-btn { padding: 10px 15px; background: #fff; border: 1px solid #ccc; border-radius: 20px; cursor: pointer; font-weight: bold; font-size: 13px; box-shadow: 0 4px 8px rgba(0,0,0,0.2); transition:0.2s;}
         .mode-btn.active { background: #17a2b8; color: white; border-color: #17a2b8; }
         .admin-toggle-btn { width: 100%; padding: 12px; margin-top: 5px; margin-bottom:15px; background: #6c757d; color: #fff; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; font-size: 14px; transition: 0.2s; box-shadow: 0 2px 4px rgba(0,0,0,0.2); }
-        .print-btn-fixed { padding: 10px 20px; background: #007bff; color: #fff; border: none; border-radius: 20px; cursor: pointer; font-weight: bold; box-shadow: 0 4px 8px rgba(0,0,0,0.3); }
+        .print-btn-fixed { padding: 10px 20px; background: #007bff; color: #fff; border: none; border-radius: 20px; cursor: pointer; font-weight: bold; }
 
         .user-profile { background: #e9ecef; padding: 12px; border-radius: 8px; margin-bottom: 10px; font-size: 13px; display: flex; justify-content: space-between; align-items: center; }
         .logout-btn { background: #ff4d4f; color: white; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer; }
