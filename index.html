@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>재활 시스템 - 카테고리 순서 고정 완벽판</title>
+    <title>재활 시스템 - 휴지통 및 유령 데이터 방어</title>
     
     <style id="dynamic-print-style">
         @media print { @page { size: landscape; margin: 0; } }
@@ -56,7 +56,6 @@
                 const listSnap = await getDoc(doc(db, "settings", "exerciseList"));
                 let rawData = listSnap.exists() ? listSnap.data() : {};
                 
-                // 🌟 [핵심] 고관절 추가 및 8대 필수 카테고리 설정 🌟
                 const requiredCategories = ["목", "어깨", "팔꿈치", "손목", "허리", "고관절", "무릎", "발목"];
                 requiredCategories.forEach(cat => {
                     if (!rawData[cat]) rawData[cat] = { "스트레칭": [], "운동": [] };
@@ -273,17 +272,6 @@
             window.exerciseData = newData;
         }
 
-        function removeDeletedFromSelection() {
-            window.selectedExercises = window.selectedExercises.filter(ex => {
-                if(window.exerciseData[ex.joint]) {
-                    for(let folder in window.exerciseData[ex.joint]) {
-                        if(window.exerciseData[ex.joint][folder].includes(ex.name)) return true;
-                    }
-                }
-                return false;
-            });
-        }
-
         window.toggleAdmin = async function() { 
             if (window.isAdminMode) {
                 syncDOMtoData();
@@ -336,6 +324,7 @@
                 }
                 
                 window.isAdminMode = false;
+                
                 renderControls(); 
                 renderPatientList();
                 renderPreview(); 
@@ -355,16 +344,15 @@
         };
 
         window.addCategory = function() { syncDOMtoData(); const n = prompt("부위명:"); if(n && !window.exerciseData[n]) { window.exerciseData[n] = {"스트레칭": [], "운동": []}; renderControls(); } }
-        window.deleteCategory = function(btn) { syncDOMtoData(); const catTitle = btn.closest('.category-box').querySelector('.category-title-text').innerText.trim(); if(confirm(`[${catTitle}] 삭제?`)) { delete window.exerciseData[catTitle]; removeDeletedFromSelection(); renderControls(); renderPreview(); } }
+        window.deleteCategory = function(btn) { syncDOMtoData(); const catTitle = btn.closest('.category-box').querySelector('.category-title-text').innerText.trim(); if(confirm(`[${catTitle}] 삭제?`)) { delete window.exerciseData[catTitle]; renderControls(); renderPreview(); } }
         window.addFolder = function(btn) { syncDOMtoData(); const catTitle = btn.closest('.category-box').querySelector('.category-title-text').innerText.trim(); const f = prompt(`새 폴더명:`); if (f && !window.exerciseData[catTitle][f]) { window.exerciseData[catTitle][f] = []; renderControls(); } }
-        window.deleteFolder = function(btn) { syncDOMtoData(); const catTitle = btn.closest('.category-box').querySelector('.category-title-text').innerText.trim(); const fTitle = btn.closest('.folder-box').querySelector('.folder-title-text').innerText.trim(); if(confirm(`삭제?`)) { delete window.exerciseData[catTitle][fTitle]; removeDeletedFromSelection(); renderControls(); renderPreview(); } }
+        window.deleteFolder = function(btn) { syncDOMtoData(); const catTitle = btn.closest('.category-box').querySelector('.category-title-text').innerText.trim(); const fTitle = btn.closest('.folder-box').querySelector('.folder-title-text').innerText.trim(); if(confirm(`삭제?`)) { delete window.exerciseData[catTitle][fTitle]; renderControls(); renderPreview(); } }
         window.addExercise = function(btn) { syncDOMtoData(); const catTitle = btn.closest('.category-box').querySelector('.category-title-text').innerText.trim(); const fTitle = btn.closest('.folder-box').querySelector('.folder-title-text').innerText.trim(); const n = prompt(`운동명:`); if(n) { window.exerciseData[catTitle][fTitle].push(n); renderControls(); } }
         window.deleteExercise = function(btn, exName) { 
             syncDOMtoData(); 
             const catTitle = btn.closest('.category-box').querySelector('.category-title-text').innerText.trim(); 
             const fTitle = btn.closest('.folder-box').querySelector('.folder-title-text').innerText.trim(); 
             window.exerciseData[catTitle][fTitle] = window.exerciseData[catTitle][fTitle].filter(e => e !== exName); 
-            removeDeletedFromSelection();
             renderControls(); 
             renderPreview(); 
         }
@@ -374,6 +362,13 @@
             if (c.checked) window.selectedExercises.push({ joint:j, name:n, id:id }); else window.selectedExercises = window.selectedExercises.filter(ex => ex.id !== id);
             renderPreview();
         }
+
+        // 🌟 회원님 요청 기능: 개별 페이지 휴지통 버튼 작동 함수 🌟
+        window.removeExerciseFromPreview = function(id) {
+            window.selectedExercises = window.selectedExercises.filter(ex => ex.id !== id);
+            renderControls(); // 왼쪽 사이드바 체크박스 해제 동기화
+            renderPreview();  // 오른쪽 화면에서 페이지 삭제
+        };
 
         window.saveDescription = async function(id, text) { await setDoc(doc(db, "settings", "exerciseDescriptions"), { [id]: text }, { merge: true }); }
         window.setVideoLink = async function(id) { const currentUrl = window.exerciseVideos[id] || ""; const url = prompt("유튜브(영상) 주소:", currentUrl); if (url !== null) { try { await setDoc(doc(db, "settings", "exerciseVideos"), { [id]: url }, { merge: true }); window.exerciseVideos[id] = url; renderPreview(); } catch(e) { alert("저장 실패!"); } } };
@@ -401,16 +396,14 @@
 
         function renderControls() {
             const c = document.getElementById('controls'); c.innerHTML = "";
-            
-            // 🌟 [핵심] 정해진 순서 배열을 기준으로 정렬 🌟
             const fixedOrder = ["목", "어깨", "팔꿈치", "손목", "허리", "고관절", "무릎", "발목"];
             const currentCategories = Object.keys(window.exerciseData).sort((a, b) => {
                 const iA = fixedOrder.indexOf(a);
                 const iB = fixedOrder.indexOf(b);
-                if (iA !== -1 && iB !== -1) return iA - iB; // 둘 다 고정 목록에 있으면 순서대로
-                if (iA !== -1) return -1; // a만 고정 목록에 있으면 a가 먼저
-                if (iB !== -1) return 1;  // b만 고정 목록에 있으면 b가 먼저
-                return a.localeCompare(b); // 그 외 새로 만든 카테고리들은 가나다 순으로 아래 배치
+                if (iA !== -1 && iB !== -1) return iA - iB; 
+                if (iA !== -1) return -1; 
+                if (iB !== -1) return 1;  
+                return a.localeCompare(b); 
             });
 
             for (const joint of currentCategories) {
@@ -441,6 +434,16 @@
         }
 
         window.renderPreview = function() {
+            // 🌟 1차 방어막: 이름이 변경/삭제되어 서버에 없는 '유령 운동'을 선택 목록에서 완벽 소각 🌟
+            window.selectedExercises = window.selectedExercises.filter(item => {
+                if (window.exerciseData[item.joint]) {
+                    for (let folder in window.exerciseData[item.joint]) {
+                        if (window.exerciseData[item.joint][folder].includes(item.name)) return true; // 실제 존재하는 운동만 통과
+                    }
+                }
+                return false; // 유령 데이터는 소각
+            });
+
             const container = document.getElementById('page-container');
             const pName = document.getElementById('pIn').value || "________";
             const tName = sessionStorage.getItem('loggedInName') || "________";
@@ -475,9 +478,12 @@
 
                 container.innerHTML += `
                 <div class="a4-page">
-                    <div class="page-header">
+                    <div class="page-header" style="position:relative;">
                         <h1>재활 운동 가이드</h1>
-                        <div class="patient-info">환자: <b>${pName}</b>님 / 담당치료사: <b>${tName}</b></div>
+                        <div style="display:flex; align-items:center; gap:15px;">
+                            <div class="patient-info">환자: <b>${pName}</b>님 / 담당치료사: <b>${tName}</b></div>
+                            <button class="no-print page-delete-btn" onclick="removeExerciseFromPreview('${id}')" title="이 페이지만 지우기">🗑️</button>
+                        </div>
                     </div>
                     <div class="page-content">
                         <div class="img-wrap" tabindex="0" onpaste="handlePaste(event, '${id}')">${imgHtml}${fileUploadHtml}</div>
@@ -548,6 +554,11 @@
         .a4-page { background: #fff; margin-bottom: 20px; padding: 15mm; box-sizing: border-box; display: flex; flex-direction: column; position: relative; box-shadow: 0 5px 15px rgba(0,0,0,0.3); overflow: hidden; }
         .page-header { border-bottom: 3px solid #333; display: flex; justify-content: space-between; align-items: center; padding-bottom: 5px; margin-bottom: 8mm; }
         .page-header h1 { margin: 0; font-size: 28pt; }
+        
+        /* 🌟 휴지통 버튼 디자인 🌟 */
+        .page-delete-btn { background: #ff4d4f; color: white; border: none; border-radius: 4px; width: 28px; height: 28px; font-size: 14px; cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 4px rgba(0,0,0,0.2); transition: 0.2s; }
+        .page-delete-btn:hover { background: #d9363e; }
+
         .page-content { flex: 1; display: flex; overflow: hidden; margin-bottom: 5mm;}
         .img-wrap { display: flex; align-items: center; justify-content: center; background: #fafafa; border-radius: 12px; position: relative; overflow: hidden; border: 2px dashed #ddd; outline: none; transition: 0.2s; }
         .vertical-img-container { display: flex; flex-direction: column; width: 100%; height: 100%; }
