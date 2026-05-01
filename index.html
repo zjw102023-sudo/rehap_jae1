@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>재활 시스템 - 자율형 권한 개방</title>
+    <title>재활 시스템 - 중앙 영역 레이아웃 고정</title>
     
     <style id="dynamic-print-style">
         @media print { @page { size: landscape; margin: 0; } }
@@ -180,7 +180,6 @@
             }
         };
 
-        // 방안 B: 관리자 모드 토글 (모든 사용자가 접근 가능, 저장 시 목록 동기화)
         window.toggleAdmin = async function() { 
             if (window.isAdminMode) {
                 syncDOMtoData();
@@ -251,7 +250,6 @@
             }
         };
 
-        // 🌟 방안 B: 권한 제한 삭제, 모든 치료사가 원본 저장 가능 🌟
         window.saveMasterDescription = async function(id, text) {
             await setDoc(doc(db, "settings", "exerciseDescriptions"), { [id]: text }, { merge: true });
             window.exerciseDescriptions[id] = text;
@@ -434,7 +432,9 @@
                 if (iA !== -1 && iB !== -1) return iA - iB; 
                 if (iA !== -1) return -1; if (iB !== -1) return 1; return a.localeCompare(b); 
             });
+
             for (const joint of currentCategories) {
+                const folders = window.exerciseData[joint];
                 const div = document.createElement('div'); div.className = 'category-box';
                 div.innerHTML = `<div class="category-title"><span class="category-title-text" contenteditable="${window.isAdminMode}" data-old-key="${joint}" style="${window.isAdminMode ? 'background:#fff; border:1px dashed #aaa; padding:0 4px; border-radius:4px;' : ''}">${joint}</span>${window.isAdminMode ? `<div><button onclick="addFolder(this)">📁+</button> <button onclick="deleteCategory(this)">🗑️</button></div>` : ''}</div>`;
                 for (const [folder, exercises] of Object.entries(window.exerciseData[joint])) {
@@ -501,7 +501,7 @@
                     </div>`;
 
                 container.innerHTML += `
-                <div class="a4-page">
+                <div class="a4-page" id="preview_${id}">
                     <div class="page-header">
                         <h1>재활 운동 가이드</h1>
                         <div style="display:flex; align-items:center; gap:10px;">
@@ -527,18 +527,40 @@
         }
     </script>
     <style>
-        body { font-family: 'Pretendard', sans-serif; margin: 0; display: flex; background: #515659; }
+        /* 🌟 레이아웃 강제 고정 방어 코드 🌟 */
+        body { font-family: 'Pretendard', sans-serif; margin: 0; display: flex; background: #515659; overflow: hidden; }
+        
         #login-overlay { position: fixed; inset: 0; background: #515659; display: flex; justify-content: center; align-items: center; z-index: 9999; }
         .login-box { background: white; padding: 40px; border-radius: 12px; text-align: center; width: 300px; }
         .login-box input { width: 100%; padding: 12px; margin: 15px 0; border: 1px solid #ccc; border-radius: 6px; text-align: center; }
         .login-box button { width: 100%; padding: 12px; background: #007bff; color: white; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; }
         
-        #sidebar { width: 280px; height: 100vh; background: #fff; padding: 20px; position: fixed; left: 0; top: 0; overflow-y: auto; border-right: 1px solid #eee; box-sizing: border-box; }
-        #preview-area { margin-left: 280px; width: calc(100% - 620px); display: flex; flex-direction: column; align-items: center; padding-top: 20px; }
-        #patient-panel { width: 340px; height: 100vh; background: #f4f6f8; padding: 20px; position: fixed; right: 0; top: 0; border-left: 2px solid #ddd; box-sizing: border-box; overflow-y: auto; }
+        #sidebar { width: 280px; height: 100vh; background: #fff; padding: 20px; position: fixed; left: 0; top: 0; overflow-y: auto; border-right: 1px solid #eee; box-sizing: border-box; z-index: 10; }
+        #patient-panel { width: 340px; height: 100vh; background: #f4f6f8; padding: 20px; position: fixed; right: 0; top: 0; border-left: 2px solid #ddd; box-sizing: border-box; overflow-y: auto; z-index: 10; }
+        
+        /* 🌟 미리보기 영역 물리적 제어 🌟 */
+        #preview-area { 
+            position: fixed; 
+            left: 280px; 
+            right: 340px; 
+            top: 0; 
+            bottom: 0; 
+            overflow: auto; 
+            padding-top: 80px; /* 상단 고정 버튼을 위한 공간 */
+            box-sizing: border-box;
+        }
+
+        #page-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            transform: scale(0.8);
+            transform-origin: top center;
+            margin-bottom: -15%;
+        }
         
         .top-right-controls { position: fixed; top: 20px; right: 365px; display: flex; gap: 8px; z-index: 1000; }
-        .mode-btn { padding: 10px 15px; background: #fff; border: 1px solid #ccc; border-radius: 20px; cursor: pointer; font-weight: bold; font-size: 13px; box-shadow: 0 4px 8px rgba(0,0,0,0.2); }
+        .mode-btn { padding: 10px 15px; background: #fff; border: 1px solid #ccc; border-radius: 20px; cursor: pointer; font-weight: bold; font-size: 13px; box-shadow: 0 4px 8px rgba(0,0,0,0.2); transition:0.2s;}
         .mode-btn.active { background: #17a2b8; color: white; border-color: #17a2b8; }
         
         .admin-toggle-btn { padding: 10px 12px; background: #6c757d; color: #fff; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; font-size: 13px; box-shadow: 0 2px 4px rgba(0,0,0,0.2); }
@@ -597,8 +619,8 @@
 
         @media print {
             #sidebar, #patient-panel, .no-print, #login-overlay, .top-right-controls { display: none !important; }
-            #preview-area { margin: 0; padding: 0; width: 100%; }
-            #page-container { transform: scale(1) !important; margin: 0; }
+            #preview-area { margin: 0; padding: 0; width: 100%; overflow: visible !important; position: static; display: block; }
+            #page-container { transform: scale(1) !important; margin: 0; display: block; }
             .a4-page { margin: 0; padding: 10mm 15mm; page-break-after: always; box-shadow: none; border: none; }
             .img-wrap { border: none !important; }
             .qr-box { border: none; box-shadow: none; right: 0; bottom: 0; }
