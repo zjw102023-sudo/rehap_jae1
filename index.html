@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>재활 시스템 - 버튼 및 레이아웃 최적화</title>
+    <title>재활 시스템 - 마스터피스 (QR/매크로/검색/메모)</title>
     
     <style id="dynamic-print-style">
         @media print { @page { size: landscape; margin: 0; } }
@@ -28,6 +28,7 @@
         window.exerciseData = {};
         window.exerciseDescriptions = {};
         window.exerciseImages = {}; 
+        window.exerciseVideos = {}; // 🌟 영상 링크(QR) 데이터 추가
         window.patientDB = {}; 
         window.isAdminMode = false; 
         window.selectedExercises = []; 
@@ -47,20 +48,29 @@
                 const tSnap = await getDoc(doc(db, "settings", "therapists"));
                 if (tSnap.exists()) window.therapistDB = tSnap.data();
                 if (!window.therapistDB["0000"]) window.therapistDB["0000"] = "최고관리자";
+
                 const pSnap = await getDoc(doc(db, "settings", "patients"));
                 if (pSnap.exists()) window.patientDB = pSnap.data();
+
                 const listSnap = await getDoc(doc(db, "settings", "exerciseList"));
                 let rawData = listSnap.exists() ? listSnap.data() : {"목": {"스트레칭": [], "운동": []}};
                 for (let key in rawData) { if (Array.isArray(rawData[key])) { rawData[key] = { "스트레칭": rawData[key], "운동": [] }; } }
                 window.exerciseData = rawData;
+
                 const descSnap = await getDoc(doc(db, "settings", "exerciseDescriptions"));
                 if (descSnap.exists()) window.exerciseDescriptions = descSnap.data();
+                
                 const imgSnap = await getDoc(doc(db, "settings", "exerciseImages"));
                 if (imgSnap.exists()) {
                     let loadedImgs = imgSnap.data();
                     for (let k in loadedImgs) { if (typeof loadedImgs[k] === 'string') { loadedImgs[k] = [loadedImgs[k]]; } }
                     window.exerciseImages = loadedImgs;
                 }
+
+                // 🌟 유튜브 링크 로드
+                const vidSnap = await getDoc(doc(db, "settings", "exerciseVideos"));
+                if (vidSnap.exists()) window.exerciseVideos = vidSnap.data();
+
             } catch (e) { console.error(e); }
             renderControls(); renderPatientList(); renderPreview();
         }
@@ -118,32 +128,35 @@
         window.savePatientRoutine = async function() {
             const pName = document.getElementById('pIn').value.trim();
             const chartID = document.getElementById('chartIn').value.trim();
+            const pMemo = document.getElementById('pMemo').value.trim(); // 🌟 비밀 메모 가져오기
             const loggedInID = sessionStorage.getItem('loggedInID');
+
             if (!pName || !chartID) return alert("성함과 병록번호 필수!");
             if (window.selectedExercises.length === 0) return alert("운동 선택 필수!");
 
             const saveKey = `${chartID}_${pName}_${Date.now()}`; 
             window.patientDB[saveKey] = {
-                chartID, pName,
+                chartID, pName, memo: pMemo,
                 exercises: window.selectedExercises,
                 therapistName: sessionStorage.getItem('loggedInName'),
                 therapistID: loggedInID,
                 date: new Date().toLocaleDateString() + " " + new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})
             };
-            try { await setDoc(doc(db, "settings", "patients"), window.patientDB); alert("저장되었습니다."); renderPatientList(); } catch (e) { alert("실패!"); }
+            try { await setDoc(doc(db, "settings", "patients"), window.patientDB); alert("처방과 메모가 저장되었습니다."); renderPatientList(); } catch (e) { alert("실패!"); }
         };
 
         window.loadPatientRoutine = function(key) {
             const pData = window.patientDB[key];
             document.getElementById('pIn').value = pData.pName; 
             document.getElementById('chartIn').value = pData.chartID;
+            document.getElementById('pMemo').value = pData.memo || ""; // 🌟 메모 불러오기
             window.selectedExercises = [...pData.exercises]; 
             renderControls(); renderPreview();  
-            alert("로드 완료");
+            alert("환자 기록을 불러왔습니다.");
         };
 
         window.deletePatientRoutine = async function(key) {
-            if (confirm("삭제?")) { delete window.patientDB[key]; await setDoc(doc(db, "settings", "patients"), window.patientDB); renderPatientList(); }
+            if (confirm("기록을 영구 삭제하시겠습니까?")) { delete window.patientDB[key]; await setDoc(doc(db, "settings", "patients"), window.patientDB); renderPatientList(); }
         };
 
         function renderPatientList() {
@@ -169,7 +182,7 @@
                     <div class="patient-group-content">
                         ${sortedRecords.map(r => `
                             <div class="visit-record">
-                                <div class="visit-date">📅 ${r.date}</div>
+                                <div class="visit-date">📅 ${r.date} ${r.memo ? '<span style="color:#007bff;font-weight:bold;">[메모있음]</span>' : ''}</div>
                                 <div class="p-card-actions">
                                     <button class="p-btn-load" onclick="loadPatientRoutine('${r.key}')">불러오기</button>
                                     <button class="p-btn-del" onclick="deletePatientRoutine('${r.key}')">삭제</button>
@@ -181,6 +194,23 @@
                 pListDiv.appendChild(groupDiv);
             }
         }
+
+        // 🌟 실시간 운동 검색 기능 🌟
+        window.filterExercises = function() {
+            const keyword = document.getElementById('searchEx').value.toLowerCase().trim();
+            document.querySelectorAll('.exercise-item').forEach(item => {
+                const text = item.innerText.toLowerCase();
+                item.style.display = text.includes(keyword) ? 'flex' : 'none';
+            });
+            document.querySelectorAll('.folder-box').forEach(box => {
+                const visible = Array.from(box.querySelectorAll('.exercise-item')).some(item => item.style.display !== 'none');
+                box.style.display = visible ? 'block' : 'none';
+            });
+            document.querySelectorAll('.category-box').forEach(box => {
+                const visible = Array.from(box.querySelectorAll('.folder-box')).some(f => f.style.display !== 'none');
+                box.style.display = visible ? 'block' : 'none';
+            });
+        };
 
         window.saveExerciseList = async function() {
             const categories = document.querySelectorAll('.category-box');
@@ -202,6 +232,27 @@
         }
 
         window.saveDescription = async function(id, text) { await setDoc(doc(db, "settings", "exerciseDescriptions"), { [id]: text }, { merge: true }); alert("설명 저장!"); }
+
+        // 🌟 유튜브 링크 저장 함수 (QR용) 🌟
+        window.setVideoLink = async function(id) {
+            const currentUrl = window.exerciseVideos[id] || "";
+            const url = prompt("유튜브(또는 영상) 주소를 붙여넣으세요:", currentUrl);
+            if (url !== null) {
+                try {
+                    await setDoc(doc(db, "settings", "exerciseVideos"), { [id]: url }, { merge: true });
+                    window.exerciseVideos[id] = url;
+                    renderPreview();
+                } catch(e) { alert("링크 저장 실패!"); }
+            }
+        };
+
+        // 🌟 매크로(빠른 입력) 추가 함수 🌟
+        window.addMacro = function(id, text) {
+            const descBox = document.getElementById(`desc_${id}`);
+            descBox.innerHTML += (descBox.innerHTML.trim() === '' ? '' : '<br>') + `▶ ${text}`;
+            // 자동으로 설명 저장 트리거
+            saveDescription(id, descBox.innerHTML);
+        };
 
         window.processAndSaveImage = function(file, id) {
             const reader = new FileReader(); reader.readAsDataURL(file);
@@ -260,6 +311,8 @@
                 } c.appendChild(div);
             }
             document.getElementById('admin-area').innerHTML = window.isAdminMode ? `<button class="admin-btn save" onclick="saveExerciseList()">💾 명칭 및 목록 저장</button><button class="admin-btn" onclick="addCategory()" style="background:#28a745; color:white;">➕ 부위 추가</button>` : '';
+            // 렌더 후 검색 필터 유지
+            filterExercises();
         }
 
         window.renderPreview = function() {
@@ -271,11 +324,33 @@
             
             window.selectedExercises.forEach((item, idx) => {
                 const id = item.id; const desc = window.exerciseDescriptions[id] || "방법을 입력하세요."; 
+                
                 let imgs = window.exerciseImages[id] || []; if (typeof imgs === 'string') imgs = [imgs];
                 let imgHtml = imgs.length === 0 ? `<div class="no-img-placeholder">Ctrl+V로 사진 추가</div>` : `<div class="vertical-img-container">${imgs.map((src, i) => `<div class="split-img-item"><img src="${src}"><div class="img-idx-badge">${i+1}</div></div>`).join('')}</div>`;
-                const fileUploadHtml = `<div class="no-print" style="position: absolute; bottom: 10px; left: 10px; display:flex; gap:8px;"><button class="img-edit-btn" onclick="document.getElementById('f_${id}').click()">📁 사진추가</button>${imgs.length > 0 ? `<button class="img-edit-btn" style="background:#dc3545;" onclick="clearImages('${id}')">🗑️ 지우기</button>` : ''}<input type="file" id="f_${id}" accept="image/*" style="display:none" onchange="uploadLocalFile(this, '${id}')"></div>`;
                 
-                // 🌟 버튼 위치 상단으로 이동 및 레이아웃 구조 변경 🌟
+                // 🌟 QR 코드 & 영상 링크 로직 🌟
+                const vidUrl = window.exerciseVideos[id];
+                const qrHtml = vidUrl 
+                    ? `<div class="qr-box"><img src="https://api.qrserver.com/v1/create-qr-code/?size=70x70&data=${encodeURIComponent(vidUrl)}" class="qr-img"><div style="font-size:10px; text-align:center; margin-top:3px; color:#555; font-weight:bold;">영상 보기</div></div>`
+                    : `<div class="qr-placeholder no-print">영상 없음</div>`;
+
+                const fileUploadHtml = `
+                    <div class="no-print" style="position: absolute; bottom: 10px; left: 10px; display:flex; gap:8px;">
+                        <button class="img-edit-btn" onclick="document.getElementById('f_${id}').click()">📁 사진추가</button>
+                        <button class="img-edit-btn" style="background:#17a2b8;" onclick="setVideoLink('${id}')">🔗 QR 링크</button>
+                        ${imgs.length > 0 ? `<button class="img-edit-btn" style="background:#dc3545;" onclick="clearImages('${id}')">🗑️ 지우기</button>` : ''}
+                        <input type="file" id="f_${id}" accept="image/*" style="display:none" onchange="uploadLocalFile(this, '${id}')">
+                    </div>`;
+                
+                // 🌟 매크로(빠른 입력) 버튼 HTML 🌟
+                const macroHtml = `
+                    <div class="macro-btns no-print">
+                        <button onclick="addMacro('${id}', '10회 x 3세트 진행합니다.')">10회 3세트</button>
+                        <button onclick="addMacro('${id}', '15회 x 3세트 진행합니다.')">15회 3세트</button>
+                        <button onclick="addMacro('${id}', '10초 유지 x 5회 진행합니다.')">10초 유지</button>
+                        <button onclick="addMacro('${id}', '통증 없는 범위 내에서만 진행합니다.')" style="color:#d32f2f;">통증 주의</button>
+                    </div>`;
+
                 container.innerHTML += `
                 <div class="a4-page">
                     <div class="page-header">
@@ -289,11 +364,15 @@
                                 <h3>[${item.joint}] ${item.name}</h3>
                                 <button class="no-print save-btn" onclick="saveDescription('${id}', document.getElementById('desc_${id}').innerHTML)">💾 저장</button>
                             </div>
+                            ${macroHtml}
                             <div contenteditable="true" id="desc_${id}" class="editable-desc">${desc}</div>
-                            <div class="qr-placeholder no-print">📹 영상 QR 코드 (준비 중)</div>
+                            ${qrHtml}
                         </div>
                     </div>
-                    <div class="page-num-indicator">${idx + 1} / ${window.selectedExercises.length}</div>
+                    <div class="page-footer">
+                        <div class="footer-warning">🚨 주의: 운동 중 날카로운 통증이 발생하면 즉시 중단하고 담당 치료사에게 문의하세요.</div>
+                        <div class="page-num-indicator">${idx + 1} / ${window.selectedExercises.length}</div>
+                    </div>
                 </div>`;
             });
         }
@@ -311,7 +390,7 @@
         #patient-panel { width: 340px; height: 100vh; background: #f4f6f8; padding: 20px; position: fixed; right: 0; top: 0; box-sizing: border-box; overflow-y: auto; z-index: 9; border-left: 2px solid #ddd; box-shadow: -5px 0 15px rgba(0,0,0,0.1); }
         
         .top-right-controls { position: fixed; top: 20px; right: 365px; display: flex; gap: 8px; z-index: 1000; }
-        .mode-btn { padding: 10px 15px; background: #fff; border: 1px solid #ccc; border-radius: 20px; cursor: pointer; font-weight: bold; font-size: 13px; box-shadow: 0 4px 8px rgba(0,0,0,0.2); }
+        .mode-btn { padding: 10px 15px; background: #fff; border: 1px solid #ccc; border-radius: 20px; cursor: pointer; font-weight: bold; font-size: 13px; box-shadow: 0 4px 8px rgba(0,0,0,0.2); transition:0.2s;}
         .mode-btn.active { background: #17a2b8; color: white; border-color: #17a2b8; }
         .admin-toggle-btn { width: 100%; padding: 10px; margin-top: 10px; background: #6c757d; color: #fff; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; font-size: 13px; }
         .print-btn-fixed { padding: 10px 20px; background: #007bff; color: #fff; border: none; border-radius: 20px; cursor: pointer; font-weight: bold; }
@@ -319,6 +398,9 @@
         .user-profile { background: #e9ecef; padding: 12px; border-radius: 8px; margin-bottom: 10px; font-size: 13px; display: flex; justify-content: space-between; align-items: center; }
         .logout-btn { background: #ff4d4f; color: white; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer; }
         #super-admin-panel { background: #fffbe6; border: 1px solid #ffe58f; padding: 15px; border-radius: 8px; margin-bottom: 20px; display: none; }
+
+        /* 🌟 검색창 디자인 🌟 */
+        .search-box { width: 100%; padding: 10px; margin-top:10px; border: 2px solid #17a2b8; border-radius: 6px; box-sizing: border-box; font-weight: bold; }
 
         .category-box { background: #f0f4f8; padding: 10px; margin-bottom: 10px; border-radius: 8px; }
         .category-title { font-weight: bold; color: #0056b3; display: flex; justify-content: space-between; margin-bottom: 5px; }
@@ -333,15 +415,18 @@
         .patient-group-content { display: none; padding: 0 10px 10px 10px; background: #fafafa; }
         .patient-group-content.active { display: block; }
         .visit-record { padding: 10px; border-top: 1px solid #eee; }
-        .visit-date { font-size: 11px; color: #777; margin-bottom: 5px; }
+        .visit-date { font-size: 11px; color: #555; margin-bottom: 5px; }
         .p-card-actions { display: flex; gap: 5px; }
         .p-btn-load { flex: 2; padding: 6px; font-size: 11px; cursor: pointer; background:#eee; border:1px solid #ccc; border-radius:4px; font-weight:bold;}
         .p-btn-del { flex: 1; padding: 6px; font-size: 11px; color: #ff4d4f; border: 1px solid #ff4d4f; background: #fff; cursor: pointer; border-radius:4px;}
 
+        /* 🌟 비밀 메모장 디자인 🌟 */
+        .secret-memo { width: 100%; height: 90px; resize: none; padding: 10px; box-sizing: border-box; border: 1px dashed #ff9800; border-radius: 6px; margin-bottom: 15px; background: #fffde7; font-size: 12px; }
+
         .a4-page { background: #fff; margin-bottom: 20px; padding: 15mm; box-sizing: border-box; display: flex; flex-direction: column; position: relative; box-shadow: 0 5px 15px rgba(0,0,0,0.3); overflow: hidden; }
         .page-header { border-bottom: 3px solid #333; display: flex; justify-content: space-between; align-items: center; padding-bottom: 5px; margin-bottom: 8mm; }
         .page-header h1 { margin: 0; font-size: 28pt; }
-        .page-content { flex: 1; display: flex; overflow: hidden; }
+        .page-content { flex: 1; display: flex; overflow: hidden; margin-bottom: 5mm;}
         .img-wrap { display: flex; align-items: center; justify-content: center; background: #fafafa; border-radius: 12px; position: relative; overflow: hidden; border: 2px dashed #ddd; outline: none; transition: 0.2s; }
         .vertical-img-container { display: flex; flex-direction: column; width: 100%; height: 100%; }
         .split-img-item { flex: 1; position: relative; width: 100%; height: 50%; overflow: hidden; border-bottom: 1px solid #ddd; }
@@ -349,20 +434,28 @@
         .img-idx-badge { position: absolute; bottom: 8px; right: 8px; background: rgba(0,0,0,0.6); color: #fff; padding: 2px 8px; border-radius: 10px; font-size: 12px; font-weight: bold; }
 
         .exercise-details { display: flex; flex-direction: column; position: relative; }
-        
-        /* 🌟 제목과 버튼을 한 줄에 정렬하는 새로운 클래스 🌟 */
-        .exercise-title-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; gap: 10px; }
+        .exercise-title-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; gap: 10px; }
         .exercise-title-row h3 { margin: 0; font-size: 20pt; color: #0056b3; line-height: 1.2; flex: 1; word-break: keep-all; }
-        
-        /* 🌟 컴팩트해진 '설명저장' 버튼 스타일 🌟 */
         .save-btn { padding: 5px 12px; background: #52c41a; color: white; border: none; border-radius: 4px; font-size: 12px; font-weight: bold; cursor: pointer; white-space: nowrap; box-shadow: 0 2px 4px rgba(0,0,0,0.2); }
-        .save-btn:hover { background: #45a016; }
+        
+        /* 🌟 매크로 버튼 디자인 🌟 */
+        .macro-btns { display: flex; gap: 5px; margin-bottom: 10px; flex-wrap: wrap; }
+        .macro-btns button { padding: 4px 8px; font-size: 11px; background: #f0f0f0; border: 1px solid #ccc; border-radius: 4px; cursor: pointer; font-weight: bold; color: #333; }
+        .macro-btns button:hover { background: #e0e0e0; }
 
         .editable-desc { flex: 1; font-size: 12pt; line-height: 1.7; padding: 12px; background: #fdfdfd; border: 1px solid #eee; border-radius: 10px; overflow-y: auto; min-height: 0; }
-        .qr-placeholder { position: absolute; bottom: 10px; right: 10px; font-size: 10px; color: #ccc; border: 1px dashed #ccc; padding: 5px; text-align: center; width: 60px; height: 60px; display: flex; align-items: center; justify-content: center;}
         
-        .page-num-indicator { position: absolute; bottom: 10mm; right: 15mm; font-size: 10pt; color: #aaa; }
-        .img-edit-btn { background: #333; color: #fff; border: none; border-radius: 4px; font-size: 11px; padding: 4px 8px; cursor: pointer; }
+        /* 🌟 QR 코드 디자인 🌟 */
+        .qr-placeholder { position: absolute; bottom: 10px; right: 10px; font-size: 10px; color: #ccc; border: 1px dashed #ccc; padding: 5px; text-align: center; width: 60px; height: 60px; display: flex; align-items: center; justify-content: center;}
+        .qr-box { position: absolute; bottom: 10px; right: 10px; background: #fff; padding: 5px; border-radius: 8px; border: 1px solid #eee; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        .qr-img { width: 70px; height: 70px; display: block; }
+        
+        /* 🌟 푸터 디자인 🌟 */
+        .page-footer { margin-top: auto; border-top: 2px solid #333; padding-top: 8px; display: flex; justify-content: space-between; align-items: center; }
+        .footer-warning { font-size: 10pt; color: #d32f2f; font-weight: bold; }
+        .page-num-indicator { font-size: 10pt; color: #888; font-weight: bold; }
+
+        .img-edit-btn { background: #333; color: #fff; border: none; border-radius: 4px; font-size: 11px; padding: 6px 10px; cursor: pointer; font-weight:bold; }
 
         .landscape-mode .a4-page { width: 297mm; height: 210mm; }
         .landscape-mode .page-content { flex-direction: row; gap: 20px; }
@@ -381,6 +474,8 @@
             #page-container { transform: scale(1) !important; margin: 0; }
             .a4-page { margin: 0; page-break-after: always; box-shadow: none; border: none; }
             .img-wrap { border: none !important; }
+            /* QR코드가 인쇄될 수 있도록 설정 */
+            .qr-box { border: none; box-shadow: none; right: 0; bottom: 0; }
         }
     </style>
 </head>
@@ -416,13 +511,18 @@
 
         <div id="super-admin-panel" class="no-print"><h4>👨‍⚕️ 치료사 관리</h4><div id="t-list"></div><button class="admin-btn" onclick="addTherapist()" style="background:#28a745; color:white; border:none; margin-top:10px;">+ 새 치료사 등록</button></div>
         
-        <div id="controls" style="margin-top:20px;"></div>
+        <input type="text" id="searchEx" class="search-box no-print" placeholder="🔍 운동 검색 (예: 스쿼트)" oninput="filterExercises()">
+
+        <div id="controls" style="margin-top:15px;"></div>
         <div id="admin-area"></div>
     </div>
 
     <div id="patient-panel" class="no-print">
         <div class="patient-panel-header">📋 환자 처방 관리</div>
-        <button class="save-routine-btn" onclick="savePatientRoutine()">💾 현재 처방 저장하기</button>
+        
+        <textarea id="pMemo" class="secret-memo" placeholder="📝 [치료사 전용] 환자 상태나 다음 치료 인수인계 메모를 남겨주세요. (인쇄본에는 나오지 않습니다)"></textarea>
+
+        <button class="save-routine-btn" onclick="savePatientRoutine()">💾 현재 처방 및 메모 저장</button>
         <div style="font-size: 13px; font-weight: bold; margin-bottom: 10px; color: #555;">나의 환자 목록 (이름 클릭 시 내역 확장)</div>
         <div id="patient-list-container"></div>
     </div>
