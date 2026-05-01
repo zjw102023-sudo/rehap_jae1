@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>재활 시스템 - 휴지통 및 유령 데이터 방어</title>
+    <title>재활 시스템 - 디자인 최적화 및 선택 초기화</title>
     
     <style id="dynamic-print-style">
         @media print { @page { size: landscape; margin: 0; } }
@@ -343,16 +343,39 @@
             }
         };
 
+        // 🌟 새 기능: 전체 선택 초기화 버튼 로직 🌟
+        window.resetSelection = function() {
+            if(window.selectedExercises.length === 0) return;
+            if (confirm("선택된 운동을 모두 초기화하시겠습니까?")) {
+                window.selectedExercises = [];
+                renderControls();
+                renderPreview();
+            }
+        };
+
         window.addCategory = function() { syncDOMtoData(); const n = prompt("부위명:"); if(n && !window.exerciseData[n]) { window.exerciseData[n] = {"스트레칭": [], "운동": []}; renderControls(); } }
-        window.deleteCategory = function(btn) { syncDOMtoData(); const catTitle = btn.closest('.category-box').querySelector('.category-title-text').innerText.trim(); if(confirm(`[${catTitle}] 삭제?`)) { delete window.exerciseData[catTitle]; renderControls(); renderPreview(); } }
+        window.deleteCategory = function(btn) { syncDOMtoData(); const catTitle = btn.closest('.category-box').querySelector('.category-title-text').innerText.trim(); if(confirm(`[${catTitle}] 삭제?`)) { delete window.exerciseData[catTitle]; removeDeletedFromSelection(); renderControls(); renderPreview(); } }
         window.addFolder = function(btn) { syncDOMtoData(); const catTitle = btn.closest('.category-box').querySelector('.category-title-text').innerText.trim(); const f = prompt(`새 폴더명:`); if (f && !window.exerciseData[catTitle][f]) { window.exerciseData[catTitle][f] = []; renderControls(); } }
-        window.deleteFolder = function(btn) { syncDOMtoData(); const catTitle = btn.closest('.category-box').querySelector('.category-title-text').innerText.trim(); const fTitle = btn.closest('.folder-box').querySelector('.folder-title-text').innerText.trim(); if(confirm(`삭제?`)) { delete window.exerciseData[catTitle][fTitle]; renderControls(); renderPreview(); } }
+        window.deleteFolder = function(btn) { syncDOMtoData(); const catTitle = btn.closest('.category-box').querySelector('.category-title-text').innerText.trim(); const fTitle = btn.closest('.folder-box').querySelector('.folder-title-text').innerText.trim(); if(confirm(`삭제?`)) { delete window.exerciseData[catTitle][fTitle]; removeDeletedFromSelection(); renderControls(); renderPreview(); } }
         window.addExercise = function(btn) { syncDOMtoData(); const catTitle = btn.closest('.category-box').querySelector('.category-title-text').innerText.trim(); const fTitle = btn.closest('.folder-box').querySelector('.folder-title-text').innerText.trim(); const n = prompt(`운동명:`); if(n) { window.exerciseData[catTitle][fTitle].push(n); renderControls(); } }
+        
+        function removeDeletedFromSelection() {
+            window.selectedExercises = window.selectedExercises.filter(ex => {
+                if(window.exerciseData[ex.joint]) {
+                    for(let folder in window.exerciseData[ex.joint]) {
+                        if(window.exerciseData[ex.joint][folder].includes(ex.name)) return true;
+                    }
+                }
+                return false;
+            });
+        }
+
         window.deleteExercise = function(btn, exName) { 
             syncDOMtoData(); 
             const catTitle = btn.closest('.category-box').querySelector('.category-title-text').innerText.trim(); 
             const fTitle = btn.closest('.folder-box').querySelector('.folder-title-text').innerText.trim(); 
             window.exerciseData[catTitle][fTitle] = window.exerciseData[catTitle][fTitle].filter(e => e !== exName); 
+            removeDeletedFromSelection();
             renderControls(); 
             renderPreview(); 
         }
@@ -363,11 +386,10 @@
             renderPreview();
         }
 
-        // 🌟 회원님 요청 기능: 개별 페이지 휴지통 버튼 작동 함수 🌟
         window.removeExerciseFromPreview = function(id) {
             window.selectedExercises = window.selectedExercises.filter(ex => ex.id !== id);
-            renderControls(); // 왼쪽 사이드바 체크박스 해제 동기화
-            renderPreview();  // 오른쪽 화면에서 페이지 삭제
+            renderControls(); 
+            renderPreview();  
         };
 
         window.saveDescription = async function(id, text) { await setDoc(doc(db, "settings", "exerciseDescriptions"), { [id]: text }, { merge: true }); }
@@ -434,14 +456,13 @@
         }
 
         window.renderPreview = function() {
-            // 🌟 1차 방어막: 이름이 변경/삭제되어 서버에 없는 '유령 운동'을 선택 목록에서 완벽 소각 🌟
             window.selectedExercises = window.selectedExercises.filter(item => {
                 if (window.exerciseData[item.joint]) {
                     for (let folder in window.exerciseData[item.joint]) {
-                        if (window.exerciseData[item.joint][folder].includes(item.name)) return true; // 실제 존재하는 운동만 통과
+                        if (window.exerciseData[item.joint][folder].includes(item.name)) return true; 
                     }
                 }
-                return false; // 유령 데이터는 소각
+                return false; 
             });
 
             const container = document.getElementById('page-container');
@@ -468,12 +489,13 @@
                         <input type="file" id="f_${id}" accept="image/*" style="display:none" onchange="uploadLocalFile(this, '${id}')">
                     </div>`;
                 
+                // 🌟 매크로 수정: 꼬리말에 있던 통증 문구를 매크로 버튼으로 추가 🌟
                 const macroHtml = `
                     <div class="macro-btns no-print">
                         <button onclick="addMacro('${id}', '10회 x 3세트 진행합니다.')">10회 3세트</button>
                         <button onclick="addMacro('${id}', '15회 x 3세트 진행합니다.')">15회 3세트</button>
                         <button onclick="addMacro('${id}', '10초 유지 x 5회 진행합니다.')">10초 유지</button>
-                        <button onclick="addMacro('${id}', '통증 없는 범위 내에서 진행합니다.')" style="color:#d32f2f;">통증 주의</button>
+                        <button onclick="addMacro('${id}', '🚨 주의: 운동 중 찌릿하거나 날카로운 통증이 발생하면 즉시 중단하고 치료사에게 문의하세요.')" style="color:#d32f2f;">🚨 통증 주의 멘트</button>
                     </div>`;
 
                 container.innerHTML += `
@@ -497,8 +519,7 @@
                             ${qrHtml}
                         </div>
                     </div>
-                    <div class="page-footer">
-                        <div class="footer-warning">🚨 주의: 운동 중 찌릿하거나 날카로운 통증이 발생하면 즉시 중단하고 치료사에게 문의하세요.</div>
+                    <div class="page-footer" style="justify-content: flex-end;">
                         <div class="page-num-indicator">${idx + 1} / ${window.selectedExercises.length}</div>
                     </div>
                 </div>`;
@@ -520,7 +541,10 @@
         .top-right-controls { position: fixed; top: 20px; right: 365px; display: flex; gap: 8px; z-index: 1000; }
         .mode-btn { padding: 10px 15px; background: #fff; border: 1px solid #ccc; border-radius: 20px; cursor: pointer; font-weight: bold; font-size: 13px; box-shadow: 0 4px 8px rgba(0,0,0,0.2); transition:0.2s;}
         .mode-btn.active { background: #17a2b8; color: white; border-color: #17a2b8; }
-        .admin-toggle-btn { width: 100%; padding: 12px; margin-top: 5px; margin-bottom:15px; background: #6c757d; color: #fff; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; font-size: 14px; transition: 0.2s; box-shadow: 0 2px 4px rgba(0,0,0,0.2); }
+        
+        /* 🌟 수정 및 초기화 버튼 나란히 배치 🌟 */
+        .admin-toggle-btn { padding: 10px 12px; background: #6c757d; color: #fff; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; font-size: 13px; transition: 0.2s; box-shadow: 0 2px 4px rgba(0,0,0,0.2); }
+        
         .print-btn-fixed { padding: 10px 20px; background: #007bff; color: #fff; border: none; border-radius: 20px; cursor: pointer; font-weight: bold; }
 
         .user-profile { background: #e9ecef; padding: 12px; border-radius: 8px; margin-bottom: 10px; font-size: 13px; display: flex; justify-content: space-between; align-items: center; }
@@ -551,11 +575,13 @@
 
         .secret-memo { width: 100%; height: 90px; resize: none; padding: 10px; box-sizing: border-box; border: 1px dashed #ff9800; border-radius: 6px; margin-bottom: 15px; background: #fffde7; font-size: 12px; font-family: inherit;}
 
-        .a4-page { background: #fff; margin-bottom: 20px; padding: 15mm; box-sizing: border-box; display: flex; flex-direction: column; position: relative; box-shadow: 0 5px 15px rgba(0,0,0,0.3); overflow: hidden; }
-        .page-header { border-bottom: 3px solid #333; display: flex; justify-content: space-between; align-items: center; padding-bottom: 5px; margin-bottom: 8mm; }
-        .page-header h1 { margin: 0; font-size: 28pt; }
+        /* 🌟 상단 여백 최적화 (padding 줄임) 🌟 */
+        .a4-page { background: #fff; margin-bottom: 20px; padding: 10mm 15mm 15mm 15mm; box-sizing: border-box; display: flex; flex-direction: column; position: relative; box-shadow: 0 5px 15px rgba(0,0,0,0.3); overflow: hidden; }
         
-        /* 🌟 휴지통 버튼 디자인 🌟 */
+        /* 🌟 제목 아래 여백 줄임 🌟 */
+        .page-header { border-bottom: 3px solid #333; display: flex; justify-content: space-between; align-items: center; padding-bottom: 5px; margin-bottom: 4mm; }
+        .page-header h1 { margin: 0; font-size: 26pt; }
+        
         .page-delete-btn { background: #ff4d4f; color: white; border: none; border-radius: 4px; width: 28px; height: 28px; font-size: 14px; cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 4px rgba(0,0,0,0.2); transition: 0.2s; }
         .page-delete-btn:hover { background: #d9363e; }
 
@@ -581,8 +607,7 @@
         .qr-box { position: absolute; bottom: 10px; right: 10px; background: #fff; padding: 5px; border-radius: 8px; border: 1px solid #eee; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
         .qr-img { width: 70px; height: 70px; display: block; }
         
-        .page-footer { margin-top: auto; border-top: 2px solid #333; padding-top: 8px; display: flex; justify-content: space-between; align-items: center; }
-        .footer-warning { font-size: 10pt; color: #d32f2f; font-weight: bold; }
+        .page-footer { margin-top: auto; border-top: 2px solid #333; padding-top: 8px; display: flex; align-items: center; }
         .page-num-indicator { font-size: 10pt; color: #888; font-weight: bold; }
 
         .img-edit-btn { background: #333; color: #fff; border: none; border-radius: 4px; font-size: 11px; padding: 6px 10px; cursor: pointer; font-weight:bold; }
@@ -602,7 +627,7 @@
             #sidebar, #patient-panel, .top-right-controls, .no-print, #login-overlay { display: none !important; }
             #preview-area { margin: 0; padding: 0; width: 100%; }
             #page-container { transform: scale(1) !important; margin: 0; }
-            .a4-page { margin: 0; page-break-after: always; box-shadow: none; border: none; }
+            .a4-page { margin: 0; padding: 10mm 15mm; page-break-after: always; box-shadow: none; border: none; }
             .img-wrap { border: none !important; }
             .qr-box { border: none; box-shadow: none; right: 0; bottom: 0; }
         }
@@ -630,7 +655,10 @@
         
         <h3>처방 설정</h3>
         
-        <button id="admin-toggle-btn" class="admin-toggle-btn" onclick="toggleAdmin()">⚙️ 목록 수정</button>
+        <div style="display:flex; gap:5px; margin-bottom:15px;">
+            <button id="admin-toggle-btn" class="admin-toggle-btn" style="flex:1; margin:0;" onclick="toggleAdmin()">⚙️ 목록 수정</button>
+            <button class="admin-toggle-btn" style="flex:1; margin:0; background:#17a2b8;" onclick="resetSelection()">🔄 선택 초기화</button>
+        </div>
 
         <div style="margin-bottom:10px;">
             <input type="text" id="pIn" placeholder="환자 성함" oninput="renderPreview()" style="width:100%; padding:8px; border:1px solid #ddd; border-radius:4px;">
