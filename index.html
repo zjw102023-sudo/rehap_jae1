@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>재활 시스템 - No 새로고침 최적화 버전</title>
+    <title>재활 시스템 - 카테고리 순서 고정 완벽판</title>
     
     <style id="dynamic-print-style">
         @media print { @page { size: landscape; margin: 0; } }
@@ -56,7 +56,8 @@
                 const listSnap = await getDoc(doc(db, "settings", "exerciseList"));
                 let rawData = listSnap.exists() ? listSnap.data() : {};
                 
-                const requiredCategories = ["목", "어깨", "팔꿈치", "손목", "허리", "무릎", "발목"];
+                // 🌟 [핵심] 고관절 추가 및 8대 필수 카테고리 설정 🌟
+                const requiredCategories = ["목", "어깨", "팔꿈치", "손목", "허리", "고관절", "무릎", "발목"];
                 requiredCategories.forEach(cat => {
                     if (!rawData[cat]) rawData[cat] = { "스트레칭": [], "운동": [] };
                 });
@@ -157,7 +158,6 @@
             document.getElementById('pMemo').value = pData.memo || ""; 
             window.selectedExercises = [...pData.exercises]; 
             renderControls(); renderPreview();  
-            // 잦은 alert 방지 (스무스한 UX를 위해 생략)
         };
 
         window.startNewRoutine = function(pName, chartID) {
@@ -273,7 +273,6 @@
             window.exerciseData = newData;
         }
 
-        // 🌟 지워진 항목을 미리보기에서도 지우는 동기화 함수 🌟
         function removeDeletedFromSelection() {
             window.selectedExercises = window.selectedExercises.filter(ex => {
                 if(window.exerciseData[ex.joint]) {
@@ -285,7 +284,6 @@
             });
         }
 
-        // 🌟 새로고침을 완전히 없앤(SPA) 토글 관리자 함수 🌟
         window.toggleAdmin = async function() { 
             if (window.isAdminMode) {
                 syncDOMtoData();
@@ -338,8 +336,6 @@
                 }
                 
                 window.isAdminMode = false;
-                
-                // 🌟 화면 깜빡임(reload) 없이 UI만 부드럽게 다시 그림 🌟
                 renderControls(); 
                 renderPatientList();
                 renderPreview(); 
@@ -379,7 +375,7 @@
             renderPreview();
         }
 
-        window.saveDescription = async function(id, text) { await setDoc(doc(db, "settings", "exerciseDescriptions"), { [id]: text }, { merge: true }); /* 잦은 알림 방지 */ }
+        window.saveDescription = async function(id, text) { await setDoc(doc(db, "settings", "exerciseDescriptions"), { [id]: text }, { merge: true }); }
         window.setVideoLink = async function(id) { const currentUrl = window.exerciseVideos[id] || ""; const url = prompt("유튜브(영상) 주소:", currentUrl); if (url !== null) { try { await setDoc(doc(db, "settings", "exerciseVideos"), { [id]: url }, { merge: true }); window.exerciseVideos[id] = url; renderPreview(); } catch(e) { alert("저장 실패!"); } } };
         window.addMacro = function(id, text) { const descBox = document.getElementById(`desc_${id}`); descBox.innerHTML += (descBox.innerHTML.trim() === '' ? '' : '<br>') + `▶ ${text}`; saveDescription(id, descBox.innerHTML); };
 
@@ -405,7 +401,20 @@
 
         function renderControls() {
             const c = document.getElementById('controls'); c.innerHTML = "";
-            for (const [joint, folders] of Object.entries(window.exerciseData)) {
+            
+            // 🌟 [핵심] 정해진 순서 배열을 기준으로 정렬 🌟
+            const fixedOrder = ["목", "어깨", "팔꿈치", "손목", "허리", "고관절", "무릎", "발목"];
+            const currentCategories = Object.keys(window.exerciseData).sort((a, b) => {
+                const iA = fixedOrder.indexOf(a);
+                const iB = fixedOrder.indexOf(b);
+                if (iA !== -1 && iB !== -1) return iA - iB; // 둘 다 고정 목록에 있으면 순서대로
+                if (iA !== -1) return -1; // a만 고정 목록에 있으면 a가 먼저
+                if (iB !== -1) return 1;  // b만 고정 목록에 있으면 b가 먼저
+                return a.localeCompare(b); // 그 외 새로 만든 카테고리들은 가나다 순으로 아래 배치
+            });
+
+            for (const joint of currentCategories) {
+                const folders = window.exerciseData[joint];
                 const div = document.createElement('div'); div.className = 'category-box';
                 div.innerHTML = `<div class="category-title"><span class="category-title-text" contenteditable="${window.isAdminMode}" data-old-key="${joint}" style="${window.isAdminMode ? 'background:#fff; border:1px dashed #aaa; padding:0 4px; border-radius:4px;' : ''}">${joint}</span>${window.isAdminMode ? `<div><button onclick="addFolder(this)">📁+</button> <button onclick="deleteCategory(this)">🗑️</button></div>` : ''}</div>`;
                 for (const [folder, exercises] of Object.entries(folders)) {
@@ -427,6 +436,7 @@
                     }); div.appendChild(fDiv);
                 } c.appendChild(div);
             }
+            document.getElementById('admin-area').innerHTML = window.isAdminMode ? `<button class="admin-btn" onclick="addCategory()" style="background:#28a745; color:white; padding:12px; font-size:14px; margin-top:10px;">➕ 대분류(부위) 추가</button>` : '';
             filterExercises();
         }
 
