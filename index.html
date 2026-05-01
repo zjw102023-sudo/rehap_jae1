@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>재활 시스템 - 완벽 동기화 및 새 처방 기능</title>
+    <title>재활 시스템 - No 새로고침 최적화 버전</title>
     
     <style id="dynamic-print-style">
         @media print { @page { size: landscape; margin: 0; } }
@@ -147,7 +147,7 @@
                 therapistID: loggedInID,
                 date: new Date().toLocaleDateString() + " " + new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})
             };
-            try { await setDoc(doc(db, "settings", "patients"), window.patientDB); alert("처방과 메모가 저장되었습니다."); renderPatientList(); } catch (e) { alert("실패!"); }
+            try { await setDoc(doc(db, "settings", "patients"), window.patientDB); alert("저장되었습니다."); renderPatientList(); } catch (e) { alert("실패!"); }
         };
 
         window.loadPatientRoutine = function(key) {
@@ -157,18 +157,16 @@
             document.getElementById('pMemo').value = pData.memo || ""; 
             window.selectedExercises = [...pData.exercises]; 
             renderControls(); renderPreview();  
-            alert("환자 기록을 불러왔습니다.");
+            // 잦은 alert 방지 (스무스한 UX를 위해 생략)
         };
 
-        // 🌟 새 처방 시작 함수 🌟
         window.startNewRoutine = function(pName, chartID) {
             document.getElementById('pIn').value = pName;
             document.getElementById('chartIn').value = chartID;
-            document.getElementById('pMemo').value = ""; // 메모도 초기화
-            window.selectedExercises = []; // 체크된 운동 초기화
-            renderControls(); // 체크박스 해제 반영
-            renderPreview();  // 미리보기 초기화
-            alert(`[${pName}] 환자님의 새로운 처방 작성을 시작합니다.\n원하는 운동을 선택해 주세요.`);
+            document.getElementById('pMemo').value = ""; 
+            window.selectedExercises = []; 
+            renderControls(); 
+            renderPreview();  
         };
 
         window.deletePatientRoutine = async function(key) {
@@ -192,13 +190,12 @@
                 const groupDiv = document.createElement('div');
                 groupDiv.className = 'patient-group';
                 
-                // 🌟 환자 이름 옆에 '새 처방' 버튼 추가 🌟
                 groupDiv.innerHTML = `
                     <div class="patient-group-title">
                         <div onclick="this.parentElement.nextElementSibling.classList.toggle('active')" style="flex:1; cursor:pointer;">
                             <strong>👤 ${pName}</strong> <span style="font-size:11px;">(#${chartID})</span>
                         </div>
-                        <button class="new-routine-btn" onclick="startNewRoutine('${pName}', '${chartID}')" title="기존 선택을 지우고 새 처방 시작">➕ 새 처방</button>
+                        <button class="new-routine-btn" onclick="startNewRoutine('${pName}', '${chartID}')" title="새 처방 시작">➕ 새 처방</button>
                     </div>
                     <div class="patient-group-content">
                         ${sortedRecords.map(r => `
@@ -276,7 +273,19 @@
             window.exerciseData = newData;
         }
 
-        // 🌟 수정 완료 후 자동 새로고침(reload)을 통한 완벽 동기화 🌟
+        // 🌟 지워진 항목을 미리보기에서도 지우는 동기화 함수 🌟
+        function removeDeletedFromSelection() {
+            window.selectedExercises = window.selectedExercises.filter(ex => {
+                if(window.exerciseData[ex.joint]) {
+                    for(let folder in window.exerciseData[ex.joint]) {
+                        if(window.exerciseData[ex.joint][folder].includes(ex.name)) return true;
+                    }
+                }
+                return false;
+            });
+        }
+
+        // 🌟 새로고침을 완전히 없앤(SPA) 토글 관리자 함수 🌟
         window.toggleAdmin = async function() { 
             if (window.isAdminMode) {
                 syncDOMtoData();
@@ -328,9 +337,17 @@
                     await setDoc(doc(db, "settings", "patients"), window.patientDB);
                 }
                 
-                // 회원님의 신의 한 수: 저장 완료 후 브라우저 새로고침
-                alert("목록 및 명칭 수정 내역이 데이터베이스에 안전하게 반영되었습니다.\n시스템 동기화를 위해 화면을 새로고침합니다.");
-                location.reload(); 
+                window.isAdminMode = false;
+                
+                // 🌟 화면 깜빡임(reload) 없이 UI만 부드럽게 다시 그림 🌟
+                renderControls(); 
+                renderPatientList();
+                renderPreview(); 
+
+                const btn = document.getElementById('admin-toggle-btn');
+                btn.innerText = "⚙️ 목록 수정";
+                btn.style.background = "#6c757d";
+
             } else {
                 document.getElementById('searchEx').value = ""; 
                 window.isAdminMode = true; 
@@ -342,11 +359,19 @@
         };
 
         window.addCategory = function() { syncDOMtoData(); const n = prompt("부위명:"); if(n && !window.exerciseData[n]) { window.exerciseData[n] = {"스트레칭": [], "운동": []}; renderControls(); } }
-        window.deleteCategory = function(btn) { syncDOMtoData(); const catTitle = btn.closest('.category-box').querySelector('.category-title-text').innerText.trim(); if(confirm(`[${catTitle}] 삭제?`)) { delete window.exerciseData[catTitle]; renderControls(); renderPreview(); } }
+        window.deleteCategory = function(btn) { syncDOMtoData(); const catTitle = btn.closest('.category-box').querySelector('.category-title-text').innerText.trim(); if(confirm(`[${catTitle}] 삭제?`)) { delete window.exerciseData[catTitle]; removeDeletedFromSelection(); renderControls(); renderPreview(); } }
         window.addFolder = function(btn) { syncDOMtoData(); const catTitle = btn.closest('.category-box').querySelector('.category-title-text').innerText.trim(); const f = prompt(`새 폴더명:`); if (f && !window.exerciseData[catTitle][f]) { window.exerciseData[catTitle][f] = []; renderControls(); } }
-        window.deleteFolder = function(btn) { syncDOMtoData(); const catTitle = btn.closest('.category-box').querySelector('.category-title-text').innerText.trim(); const fTitle = btn.closest('.folder-box').querySelector('.folder-title-text').innerText.trim(); if(confirm(`삭제?`)) { delete window.exerciseData[catTitle][fTitle]; renderControls(); renderPreview(); } }
+        window.deleteFolder = function(btn) { syncDOMtoData(); const catTitle = btn.closest('.category-box').querySelector('.category-title-text').innerText.trim(); const fTitle = btn.closest('.folder-box').querySelector('.folder-title-text').innerText.trim(); if(confirm(`삭제?`)) { delete window.exerciseData[catTitle][fTitle]; removeDeletedFromSelection(); renderControls(); renderPreview(); } }
         window.addExercise = function(btn) { syncDOMtoData(); const catTitle = btn.closest('.category-box').querySelector('.category-title-text').innerText.trim(); const fTitle = btn.closest('.folder-box').querySelector('.folder-title-text').innerText.trim(); const n = prompt(`운동명:`); if(n) { window.exerciseData[catTitle][fTitle].push(n); renderControls(); } }
-        window.deleteExercise = function(btn, exName) { syncDOMtoData(); const catTitle = btn.closest('.category-box').querySelector('.category-title-text').innerText.trim(); const fTitle = btn.closest('.folder-box').querySelector('.folder-title-text').innerText.trim(); window.exerciseData[catTitle][fTitle] = window.exerciseData[catTitle][fTitle].filter(e => e !== exName); renderControls(); renderPreview(); }
+        window.deleteExercise = function(btn, exName) { 
+            syncDOMtoData(); 
+            const catTitle = btn.closest('.category-box').querySelector('.category-title-text').innerText.trim(); 
+            const fTitle = btn.closest('.folder-box').querySelector('.folder-title-text').innerText.trim(); 
+            window.exerciseData[catTitle][fTitle] = window.exerciseData[catTitle][fTitle].filter(e => e !== exName); 
+            removeDeletedFromSelection();
+            renderControls(); 
+            renderPreview(); 
+        }
         
         window.handleCheck = function(c) {
             const j = c.getAttribute('data-joint'), n = c.getAttribute('data-name'), id = `${j}_${n}`;
@@ -354,7 +379,7 @@
             renderPreview();
         }
 
-        window.saveDescription = async function(id, text) { await setDoc(doc(db, "settings", "exerciseDescriptions"), { [id]: text }, { merge: true }); alert("설명 저장!"); }
+        window.saveDescription = async function(id, text) { await setDoc(doc(db, "settings", "exerciseDescriptions"), { [id]: text }, { merge: true }); /* 잦은 알림 방지 */ }
         window.setVideoLink = async function(id) { const currentUrl = window.exerciseVideos[id] || ""; const url = prompt("유튜브(영상) 주소:", currentUrl); if (url !== null) { try { await setDoc(doc(db, "settings", "exerciseVideos"), { [id]: url }, { merge: true }); window.exerciseVideos[id] = url; renderPreview(); } catch(e) { alert("저장 실패!"); } } };
         window.addMacro = function(id, text) { const descBox = document.getElementById(`desc_${id}`); descBox.innerHTML += (descBox.innerHTML.trim() === '' ? '' : '<br>') + `▶ ${text}`; saveDescription(id, descBox.innerHTML); };
 
@@ -402,7 +427,6 @@
                     }); div.appendChild(fDiv);
                 } c.appendChild(div);
             }
-            document.getElementById('admin-area').innerHTML = window.isAdminMode ? `<button class="admin-btn" onclick="addCategory()" style="background:#28a745; color:white; padding:12px; font-size:14px; margin-top:10px;">➕ 대분류(부위) 추가</button>` : '';
             filterExercises();
         }
 
@@ -494,13 +518,11 @@
         .folder-box { margin-left: 8px; border-left: 2px solid #ccc; padding-left: 10px; margin-top: 8px; }
         .folder-title { font-size: 13px; font-weight: bold; display: flex; justify-content: space-between; margin-bottom: 5px; color:#555; }
         .exercise-item { font-size: 13px; margin-bottom: 4px; }
-        .admin-btn { width: 100%; padding: 10px; margin-top: 5px; cursor: pointer; border-radius: 5px; font-size: 12px; font-weight: bold; }
         
-        /* 🌟 환자 타이틀 및 새처방 버튼 🌟 */
         .patient-group { margin-bottom: 10px; background: white; border-radius: 8px; border: 1px solid #e1e4e8; overflow: hidden; }
         .patient-group-title { display: flex; justify-content: space-between; align-items: center; padding: 12px; background: #fff; border-bottom: 1px solid #eee; transition: 0.2s; }
         .patient-group-title:hover { background: #f0f7ff; }
-        .new-routine-btn { background: #007bff; color: white; border: none; padding: 5px 10px; border-radius: 4px; font-size: 11px; cursor: pointer; font-weight: bold; margin-left: 10px; }
+        .new-routine-btn { background: #007bff; color: white; border: none; padding: 5px 10px; border-radius: 4px; font-size: 11px; cursor: pointer; font-weight: bold; margin-left: 10px; box-shadow:0 1px 3px rgba(0,0,0,0.2);}
         .new-routine-btn:hover { background: #0056b3; }
         
         .patient-group-content { display: none; padding: 0 10px 10px 10px; background: #fafafa; }
@@ -598,7 +620,7 @@
         
         <input type="text" id="searchEx" class="search-box no-print" placeholder="🔍 운동 검색 (예: 스쿼트)" oninput="filterExercises()">
 
-        <div id="super-admin-panel" class="no-print"><h4>👨‍⚕️ 치료사 관리</h4><div id="t-list"></div><button class="admin-btn" onclick="addTherapist()" style="background:#28a745; color:white; border:none; margin-top:10px;">+ 새 치료사 등록</button></div>
+        <div id="super-admin-panel" class="no-print"><h4>👨‍⚕️ 치료사 관리</h4><div id="t-list"></div><button onclick="addTherapist()" style="width:100%; padding:10px; background:#28a745; color:white; border:none; border-radius:5px; margin-top:10px; cursor:pointer; font-weight:bold;">+ 새 치료사 등록</button></div>
         
         <div id="controls" style="margin-top:10px;"></div>
         <div id="admin-area"></div>
