@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>재활 시스템 - 폴더 생성 버그 픽스 완벽판</title>
+    <title>재활 시스템 - 운동명 수정 및 자동 이사(마이그레이션)</title>
     
     <style id="dynamic-print-style">
         @media print { @page { size: landscape; margin: 0; } }
@@ -32,6 +32,7 @@
         window.patientDB = {}; 
         window.isAdminMode = false; 
         window.selectedExercises = []; 
+        window.keyMigrations = {}; // 🌟 이름이 바뀐 운동들의 데이터를 옮기기 위한 이사 명부
 
         window.onload = async function() {
             await loadAllData(); 
@@ -199,18 +200,14 @@
             }
         }
 
-        // 🌟 버그 해결의 핵심: 검색창이 비어있으면 모든 폴더를 보이게 예외처리 🌟
         window.filterExercises = function() {
             const keyword = document.getElementById('searchEx').value.toLowerCase().trim();
-            
-            // 검색어가 없으면 무조건 싹 다 보여줌 (빈 폴더 숨김 방지)
             if (keyword === "") {
                 document.querySelectorAll('.exercise-item').forEach(item => item.style.display = 'flex');
                 document.querySelectorAll('.folder-box').forEach(box => box.style.display = 'block');
                 document.querySelectorAll('.category-box').forEach(box => box.style.display = 'block');
                 return;
             }
-
             document.querySelectorAll('.exercise-item').forEach(item => {
                 const text = item.innerText.toLowerCase();
                 item.style.display = text.includes(keyword) ? 'flex' : 'none';
@@ -225,25 +222,40 @@
             });
         };
 
+        // 🌟 수정 중인 DOM을 실시간으로 Data에 동기화 & 바뀐 이름 추적 🌟
         function syncDOMtoData() {
             if (!window.isAdminMode) return;
             const categories = document.querySelectorAll('.category-box');
             const newData = {};
+            window.keyMigrations = {}; // 이사 명부 초기화
+
             categories.forEach(cat => {
                 const catTitle = cat.querySelector('.category-title-text').innerText.trim();
+                const oldCat = cat.querySelector('.category-title-text').getAttribute('data-old-key');
                 if (!catTitle) return; 
                 newData[catTitle] = {};
+                
                 const folders = cat.querySelectorAll('.folder-box');
                 folders.forEach(fld => {
                     const fTitle = fld.querySelector('.folder-title-text').innerText.trim();
                     if (!fTitle) return;
-                    const oldKey = fld.getAttribute('data-old-folder-key');
-                    const parentCat = cat.querySelector('.category-title-text').getAttribute('data-old-key');
                     
                     let exercises = [];
-                    if (window.exerciseData[parentCat] && window.exerciseData[parentCat][oldKey]) {
-                        exercises = window.exerciseData[parentCat][oldKey];
-                    }
+                    const exSpans = fld.querySelectorAll('.exercise-title-text');
+                    
+                    exSpans.forEach(span => {
+                        const exName = span.innerText.trim();
+                        const oldEx = span.getAttribute('data-old-ex-key');
+                        if(exName) {
+                            exercises.push(exName);
+                            const oldFullKey = `${oldCat}_${oldEx}`;
+                            const newFullKey = `${catTitle}_${exName}`;
+                            // 이름이 바뀌었다면 이사 명부에 등록
+                            if (oldFullKey !== newFullKey) {
+                                window.keyMigrations[oldFullKey] = newFullKey;
+                            }
+                        }
+                    });
                     newData[catTitle][fTitle] = exercises;
                 });
             });
@@ -253,10 +265,47 @@
         window.toggleAdmin = async function() { 
             if (window.isAdminMode) {
                 syncDOMtoData();
+                
+                // 🌟 이사 명부를 확인하여 설명/사진/영상을 새 이름으로 마이그레이션 🌟
+                let metaChanged = false;
+                for (let oldKey in window.keyMigrations) {
+                    let newKey = window.keyMigrations[oldKey];
+                    
+                    if (window.exerciseDescriptions[oldKey] !== undefined) {
+                        window.exerciseDescriptions[newKey] = window.exerciseDescriptions[oldKey];
+                        delete window.exerciseDescriptions[oldKey];
+                        metaChanged = true;
+                    }
+                    if (window.exerciseImages[oldKey] !== undefined) {
+                        window.exerciseImages[newKey] = window.exerciseImages[oldKey];
+                        delete window.exerciseImages[oldKey];
+                        metaChanged = true;
+                    }
+                    if (window.exerciseVideos[oldKey] !== undefined) {
+                        window.exerciseVideos[newKey] = window.exerciseVideos[oldKey];
+                        delete window.exerciseVideos[oldKey];
+                        metaChanged = true;
+                    }
+                    // 체크된 항목 이름도 업데이트
+                    window.selectedExercises = window.selectedExercises.map(ex => {
+                        if (ex.id === oldKey) {
+                            const parts = newKey.split('_');
+                            return { joint: parts[0], name: parts[1], id: newKey };
+                        }
+                        return ex;
+                    });
+                }
+
                 await setDoc(doc(db, "settings", "exerciseList"), window.exerciseData);
+                if(metaChanged) {
+                    await setDoc(doc(db, "settings", "exerciseDescriptions"), window.exerciseDescriptions);
+                    await setDoc(doc(db, "settings", "exerciseImages"), window.exerciseImages);
+                    await setDoc(doc(db, "settings", "exerciseVideos"), window.exerciseVideos);
+                }
+                
                 window.isAdminMode = false;
             } else {
-                document.getElementById('searchEx').value = ""; // 수정 모드 진입 시 검색창 싹 비움
+                document.getElementById('searchEx').value = ""; 
                 window.isAdminMode = true; 
             }
             renderControls(); 
@@ -265,42 +314,13 @@
             btn.style.background = window.isAdminMode ? "#dc3545" : "#6c757d";
         };
 
-        window.addCategory = function() { 
-            syncDOMtoData();
-            const n = prompt("추가할 부위명:"); 
-            if(n && !window.exerciseData[n]) { window.exerciseData[n] = {"스트레칭": [], "운동": []}; renderControls(); } 
-        }
-        window.deleteCategory = function(btn) { 
-            syncDOMtoData();
-            const catTitle = btn.closest('.category-box').querySelector('.category-title-text').innerText.trim();
-            if(confirm(`[${catTitle}] 전체 삭제?`)) { delete window.exerciseData[catTitle]; renderControls(); renderPreview(); }
-        }
-        window.addFolder = function(btn) { 
-            syncDOMtoData();
-            const catTitle = btn.closest('.category-box').querySelector('.category-title-text').innerText.trim();
-            const f = prompt(`[${catTitle}] 새 폴더명:`); 
-            if (f && !window.exerciseData[catTitle][f]) { window.exerciseData[catTitle][f] = []; renderControls(); } 
-        }
-        window.deleteFolder = function(btn) { 
-            syncDOMtoData();
-            const catTitle = btn.closest('.category-box').querySelector('.category-title-text').innerText.trim();
-            const fTitle = btn.closest('.folder-box').querySelector('.folder-title-text').innerText.trim();
-            if(confirm(`[${fTitle}] 폴더 삭제?`)) { delete window.exerciseData[catTitle][fTitle]; renderControls(); renderPreview(); } 
-        }
-        window.addExercise = function(btn) { 
-            syncDOMtoData();
-            const catTitle = btn.closest('.category-box').querySelector('.category-title-text').innerText.trim();
-            const fTitle = btn.closest('.folder-box').querySelector('.folder-title-text').innerText.trim();
-            const n = prompt(`[${fTitle}] 운동명:`); 
-            if(n) { window.exerciseData[catTitle][fTitle].push(n); renderControls(); } 
-        }
-        window.deleteExercise = function(btn, exName) { 
-            syncDOMtoData();
-            const catTitle = btn.closest('.category-box').querySelector('.category-title-text').innerText.trim();
-            const fTitle = btn.closest('.folder-box').querySelector('.folder-title-text').innerText.trim();
-            window.exerciseData[catTitle][fTitle] = window.exerciseData[catTitle][fTitle].filter(e => e !== exName);
-            renderControls(); renderPreview(); 
-        }
+        window.addCategory = function() { syncDOMtoData(); const n = prompt("부위명:"); if(n && !window.exerciseData[n]) { window.exerciseData[n] = {"스트레칭": [], "운동": []}; renderControls(); } }
+        window.deleteCategory = function(btn) { syncDOMtoData(); const catTitle = btn.closest('.category-box').querySelector('.category-title-text').innerText.trim(); if(confirm(`[${catTitle}] 삭제?`)) { delete window.exerciseData[catTitle]; renderControls(); renderPreview(); } }
+        window.addFolder = function(btn) { syncDOMtoData(); const catTitle = btn.closest('.category-box').querySelector('.category-title-text').innerText.trim(); const f = prompt(`새 폴더명:`); if (f && !window.exerciseData[catTitle][f]) { window.exerciseData[catTitle][f] = []; renderControls(); } }
+        window.deleteFolder = function(btn) { syncDOMtoData(); const catTitle = btn.closest('.category-box').querySelector('.category-title-text').innerText.trim(); const fTitle = btn.closest('.folder-box').querySelector('.folder-title-text').innerText.trim(); if(confirm(`삭제?`)) { delete window.exerciseData[catTitle][fTitle]; renderControls(); renderPreview(); } }
+        window.addExercise = function(btn) { syncDOMtoData(); const catTitle = btn.closest('.category-box').querySelector('.category-title-text').innerText.trim(); const fTitle = btn.closest('.folder-box').querySelector('.folder-title-text').innerText.trim(); const n = prompt(`운동명:`); if(n) { window.exerciseData[catTitle][fTitle].push(n); renderControls(); } }
+        window.deleteExercise = function(btn, exName) { syncDOMtoData(); const catTitle = btn.closest('.category-box').querySelector('.category-title-text').innerText.trim(); const fTitle = btn.closest('.folder-box').querySelector('.folder-title-text').innerText.trim(); window.exerciseData[catTitle][fTitle] = window.exerciseData[catTitle][fTitle].filter(e => e !== exName); renderControls(); renderPreview(); }
+        
         window.handleCheck = function(c) {
             const j = c.getAttribute('data-joint'), n = c.getAttribute('data-name'), id = `${j}_${n}`;
             if (c.checked) window.selectedExercises.push({ joint:j, name:n, id:id }); else window.selectedExercises = window.selectedExercises.filter(ex => ex.id !== id);
@@ -308,16 +328,8 @@
         }
 
         window.saveDescription = async function(id, text) { await setDoc(doc(db, "settings", "exerciseDescriptions"), { [id]: text }, { merge: true }); alert("설명 저장!"); }
-        window.setVideoLink = async function(id) {
-            const currentUrl = window.exerciseVideos[id] || "";
-            const url = prompt("유튜브(또는 영상) 주소를 붙여넣으세요:", currentUrl);
-            if (url !== null) { try { await setDoc(doc(db, "settings", "exerciseVideos"), { [id]: url }, { merge: true }); window.exerciseVideos[id] = url; renderPreview(); } catch(e) { alert("링크 저장 실패!"); } }
-        };
-        window.addMacro = function(id, text) {
-            const descBox = document.getElementById(`desc_${id}`);
-            descBox.innerHTML += (descBox.innerHTML.trim() === '' ? '' : '<br>') + `▶ ${text}`;
-            saveDescription(id, descBox.innerHTML);
-        };
+        window.setVideoLink = async function(id) { const currentUrl = window.exerciseVideos[id] || ""; const url = prompt("유튜브(영상) 주소:", currentUrl); if (url !== null) { try { await setDoc(doc(db, "settings", "exerciseVideos"), { [id]: url }, { merge: true }); window.exerciseVideos[id] = url; renderPreview(); } catch(e) { alert("저장 실패!"); } } };
+        window.addMacro = function(id, text) { const descBox = document.getElementById(`desc_${id}`); descBox.innerHTML += (descBox.innerHTML.trim() === '' ? '' : '<br>') + `▶ ${text}`; saveDescription(id, descBox.innerHTML); };
 
         window.processAndSaveImage = function(file, id) {
             const reader = new FileReader(); reader.readAsDataURL(file);
@@ -337,22 +349,30 @@
             };
         }
         window.clearImages = async function(id) { if (confirm("전체 삭제?")) { await setDoc(doc(db, "settings", "exerciseImages"), { [id]: [] }, { merge: true }); window.exerciseImages[id] = []; renderPreview(); } }
-        window.handlePaste = function(e, id) {
-            const items = (e.clipboardData || e.originalEvent.clipboardData).items;
-            for (let i in items) { if (items[i].kind === 'file' && items[i].type.startsWith('image/')) { processAndSaveImage(items[i].getAsFile(), id); break; } }
-        }
+        window.handlePaste = function(e, id) { const items = (e.clipboardData || e.originalEvent.clipboardData).items; for (let i in items) { if (items[i].kind === 'file' && items[i].type.startsWith('image/')) { processAndSaveImage(items[i].getAsFile(), id); break; } } }
 
         function renderControls() {
             const c = document.getElementById('controls'); c.innerHTML = "";
             for (const [joint, folders] of Object.entries(window.exerciseData)) {
                 const div = document.createElement('div'); div.className = 'category-box';
-                div.innerHTML = `<div class="category-title"><span class="category-title-text" contenteditable="${window.isAdminMode}" data-old-key="${joint}" style="${window.isAdminMode ? 'background:#fff; border:1px solid #ccc; padding:0 4px; border-radius:4px;' : ''}">${joint}</span>${window.isAdminMode ? `<div><button onclick="addFolder(this)">📁+</button> <button onclick="deleteCategory(this)">🗑️</button></div>` : ''}</div>`;
+                div.innerHTML = `<div class="category-title"><span class="category-title-text" contenteditable="${window.isAdminMode}" data-old-key="${joint}" style="${window.isAdminMode ? 'background:#fff; border:1px dashed #aaa; padding:0 4px; border-radius:4px;' : ''}">${joint}</span>${window.isAdminMode ? `<div><button onclick="addFolder(this)">📁+</button> <button onclick="deleteCategory(this)">🗑️</button></div>` : ''}</div>`;
                 for (const [folder, exercises] of Object.entries(folders)) {
                     const fDiv = document.createElement('div'); fDiv.className = 'folder-box'; fDiv.setAttribute('data-old-folder-key', folder);
                     fDiv.innerHTML = `<div class="folder-title"><span>📂 <span class="folder-title-text" contenteditable="${window.isAdminMode}" style="${window.isAdminMode ? 'background:#fff; border:1px dashed #aaa; padding:0 4px; border-radius:4px;' : ''}">${folder}</span></span>${window.isAdminMode ? `<div><button onclick="addExercise(this)">+</button> <button onclick="deleteFolder(this)">🗑️</button></div>` : ''}</div>`;
+                    
                     exercises.forEach((ex) => {
                         const id = `${joint}_${ex}`; const isChecked = window.selectedExercises.some(s => s.id === id) ? 'checked' : '';
-                        fDiv.innerHTML += `<div class="exercise-item"><label><input type="checkbox" data-joint="${joint}" data-folder="${folder}" data-name="${ex}" onchange="handleCheck(this)" ${isChecked}> ${ex}</label>${window.isAdminMode ? `<button onclick="deleteExercise(this, '${ex}')">❌</button>` : ''}</div>`;
+                        // 🌟 운동명 수정 기능 (label의 클릭 간섭을 막기 위한 구조 적용) 🌟
+                        fDiv.innerHTML += `
+                        <div class="exercise-item" style="display:flex; align-items:center; margin-bottom:5px;">
+                            <label style="flex:1; display:flex; align-items:center; gap:5px; margin:0; cursor:pointer;">
+                                <input type="checkbox" data-joint="${joint}" data-folder="${folder}" data-name="${ex}" onchange="handleCheck(this)" ${isChecked}>
+                                <span class="exercise-title-text" contenteditable="${window.isAdminMode}" data-old-ex-key="${ex}" 
+                                      style="${window.isAdminMode ? 'background:#fff; border:1px dashed #aaa; padding:2px 4px; border-radius:4px; flex:1; cursor:text;' : 'flex:1;'}" 
+                                      onclick="if(window.isAdminMode) event.preventDefault();">${ex}</span>
+                            </label>
+                            ${window.isAdminMode ? `<button onclick="deleteExercise(this, '${ex}')" style="margin-left:5px; border-radius:3px; border:1px solid #ccc; background:#fff; cursor:pointer;">❌</button>` : ''}
+                        </div>`;
                     }); div.appendChild(fDiv);
                 } c.appendChild(div);
             }
