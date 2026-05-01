@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>재활 시스템 - 운동명 수정 및 자동 이사(마이그레이션)</title>
+    <title>재활 시스템 - 완벽 동기화 및 새 처방 기능</title>
     
     <style id="dynamic-print-style">
         @media print { @page { size: landscape; margin: 0; } }
@@ -32,7 +32,7 @@
         window.patientDB = {}; 
         window.isAdminMode = false; 
         window.selectedExercises = []; 
-        window.keyMigrations = {}; // 🌟 이름이 바뀐 운동들의 데이터를 옮기기 위한 이사 명부
+        window.keyMigrations = {}; 
 
         window.onload = async function() {
             await loadAllData(); 
@@ -160,6 +160,17 @@
             alert("환자 기록을 불러왔습니다.");
         };
 
+        // 🌟 새 처방 시작 함수 🌟
+        window.startNewRoutine = function(pName, chartID) {
+            document.getElementById('pIn').value = pName;
+            document.getElementById('chartIn').value = chartID;
+            document.getElementById('pMemo').value = ""; // 메모도 초기화
+            window.selectedExercises = []; // 체크된 운동 초기화
+            renderControls(); // 체크박스 해제 반영
+            renderPreview();  // 미리보기 초기화
+            alert(`[${pName}] 환자님의 새로운 처방 작성을 시작합니다.\n원하는 운동을 선택해 주세요.`);
+        };
+
         window.deletePatientRoutine = async function(key) {
             if (confirm("삭제?")) { delete window.patientDB[key]; await setDoc(doc(db, "settings", "patients"), window.patientDB); renderPatientList(); }
         };
@@ -180,9 +191,14 @@
                 const chartID = sortedRecords[0].chartID;
                 const groupDiv = document.createElement('div');
                 groupDiv.className = 'patient-group';
+                
+                // 🌟 환자 이름 옆에 '새 처방' 버튼 추가 🌟
                 groupDiv.innerHTML = `
-                    <div class="patient-group-title" onclick="this.nextElementSibling.classList.toggle('active')">
-                        <strong>👤 ${pName}</strong> <span style="font-size:11px;">(#${chartID})</span>
+                    <div class="patient-group-title">
+                        <div onclick="this.parentElement.nextElementSibling.classList.toggle('active')" style="flex:1; cursor:pointer;">
+                            <strong>👤 ${pName}</strong> <span style="font-size:11px;">(#${chartID})</span>
+                        </div>
+                        <button class="new-routine-btn" onclick="startNewRoutine('${pName}', '${chartID}')" title="기존 선택을 지우고 새 처방 시작">➕ 새 처방</button>
                     </div>
                     <div class="patient-group-content">
                         ${sortedRecords.map(r => `
@@ -222,12 +238,11 @@
             });
         };
 
-        // 🌟 수정 중인 DOM을 실시간으로 Data에 동기화 & 바뀐 이름 추적 🌟
         function syncDOMtoData() {
             if (!window.isAdminMode) return;
             const categories = document.querySelectorAll('.category-box');
             const newData = {};
-            window.keyMigrations = {}; // 이사 명부 초기화
+            window.keyMigrations = {}; 
 
             categories.forEach(cat => {
                 const catTitle = cat.querySelector('.category-title-text').innerText.trim();
@@ -250,7 +265,6 @@
                             exercises.push(exName);
                             const oldFullKey = `${oldCat}_${oldEx}`;
                             const newFullKey = `${catTitle}_${exName}`;
-                            // 이름이 바뀌었다면 이사 명부에 등록
                             if (oldFullKey !== newFullKey) {
                                 window.keyMigrations[oldFullKey] = newFullKey;
                             }
@@ -262,12 +276,14 @@
             window.exerciseData = newData;
         }
 
+        // 🌟 수정 완료 후 자동 새로고침(reload)을 통한 완벽 동기화 🌟
         window.toggleAdmin = async function() { 
             if (window.isAdminMode) {
                 syncDOMtoData();
                 
-                // 🌟 이사 명부를 확인하여 설명/사진/영상을 새 이름으로 마이그레이션 🌟
                 let metaChanged = false;
+                let patientChanged = false;
+
                 for (let oldKey in window.keyMigrations) {
                     let newKey = window.keyMigrations[oldKey];
                     
@@ -286,14 +302,20 @@
                         delete window.exerciseVideos[oldKey];
                         metaChanged = true;
                     }
-                    // 체크된 항목 이름도 업데이트
-                    window.selectedExercises = window.selectedExercises.map(ex => {
-                        if (ex.id === oldKey) {
+                }
+
+                for (let pKey in window.patientDB) {
+                    let pExChanged = false;
+                    window.patientDB[pKey].exercises = window.patientDB[pKey].exercises.map(ex => {
+                        if (window.keyMigrations[ex.id]) {
+                            const newKey = window.keyMigrations[ex.id];
                             const parts = newKey.split('_');
+                            pExChanged = true;
                             return { joint: parts[0], name: parts[1], id: newKey };
                         }
                         return ex;
                     });
+                    if (pExChanged) patientChanged = true;
                 }
 
                 await setDoc(doc(db, "settings", "exerciseList"), window.exerciseData);
@@ -302,16 +324,21 @@
                     await setDoc(doc(db, "settings", "exerciseImages"), window.exerciseImages);
                     await setDoc(doc(db, "settings", "exerciseVideos"), window.exerciseVideos);
                 }
+                if (patientChanged) {
+                    await setDoc(doc(db, "settings", "patients"), window.patientDB);
+                }
                 
-                window.isAdminMode = false;
+                // 회원님의 신의 한 수: 저장 완료 후 브라우저 새로고침
+                alert("목록 및 명칭 수정 내역이 데이터베이스에 안전하게 반영되었습니다.\n시스템 동기화를 위해 화면을 새로고침합니다.");
+                location.reload(); 
             } else {
                 document.getElementById('searchEx').value = ""; 
                 window.isAdminMode = true; 
+                renderControls(); 
+                const btn = document.getElementById('admin-toggle-btn');
+                btn.innerText = "💾 수정 완료 (자동저장)";
+                btn.style.background = "#dc3545";
             }
-            renderControls(); 
-            const btn = document.getElementById('admin-toggle-btn');
-            btn.innerText = window.isAdminMode ? "💾 수정 완료 (자동저장)" : "⚙️ 목록 수정";
-            btn.style.background = window.isAdminMode ? "#dc3545" : "#6c757d";
         };
 
         window.addCategory = function() { syncDOMtoData(); const n = prompt("부위명:"); if(n && !window.exerciseData[n]) { window.exerciseData[n] = {"스트레칭": [], "운동": []}; renderControls(); } }
@@ -362,7 +389,6 @@
                     
                     exercises.forEach((ex) => {
                         const id = `${joint}_${ex}`; const isChecked = window.selectedExercises.some(s => s.id === id) ? 'checked' : '';
-                        // 🌟 운동명 수정 기능 (label의 클릭 간섭을 막기 위한 구조 적용) 🌟
                         fDiv.innerHTML += `
                         <div class="exercise-item" style="display:flex; align-items:center; margin-bottom:5px;">
                             <label style="flex:1; display:flex; align-items:center; gap:5px; margin:0; cursor:pointer;">
@@ -470,9 +496,13 @@
         .exercise-item { font-size: 13px; margin-bottom: 4px; }
         .admin-btn { width: 100%; padding: 10px; margin-top: 5px; cursor: pointer; border-radius: 5px; font-size: 12px; font-weight: bold; }
         
+        /* 🌟 환자 타이틀 및 새처방 버튼 🌟 */
         .patient-group { margin-bottom: 10px; background: white; border-radius: 8px; border: 1px solid #e1e4e8; overflow: hidden; }
-        .patient-group-title { padding: 12px; background: #fff; cursor: pointer; display: flex; justify-content: space-between; align-items: center; transition: 0.2s; }
+        .patient-group-title { display: flex; justify-content: space-between; align-items: center; padding: 12px; background: #fff; border-bottom: 1px solid #eee; transition: 0.2s; }
         .patient-group-title:hover { background: #f0f7ff; }
+        .new-routine-btn { background: #007bff; color: white; border: none; padding: 5px 10px; border-radius: 4px; font-size: 11px; cursor: pointer; font-weight: bold; margin-left: 10px; }
+        .new-routine-btn:hover { background: #0056b3; }
+        
         .patient-group-content { display: none; padding: 0 10px 10px 10px; background: #fafafa; }
         .patient-group-content.active { display: block; }
         .visit-record { padding: 10px; border-top: 1px solid #eee; }
