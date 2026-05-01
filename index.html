@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>재활 시스템 - 사원번호 로그인 버전</title>
+    <title>재활 시스템 - 통합 관리자 버전</title>
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
         import { getFirestore, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
@@ -19,271 +19,238 @@
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
 
-        // 👨‍⚕️ 치료사 명부 세팅 (이곳을 수정해서 선생님들을 추가하세요!)
-        window.therapistDB = {
-            "0000": "최고관리자", // 테스트용
-            "7276": "최재원",
-            "1002": "이선생",
-            "1003": "박선생"
-        };
-
+        // 기본 변수들
+        window.therapistDB = { "0000": "최고관리자" }; // 초기값
         window.exerciseData = {};
         window.exerciseDescriptions = {};
         window.exerciseImages = {}; 
         window.isAdminMode = false; 
         window.selectedExercises = []; 
 
-        // 🔐 로그인 체크 및 실행
-        window.onload = function() {
+        // 🔐 로그인 체크 및 초기 데이터 로드
+        window.onload = async function() {
+            await loadAllData(); // 서버에서 데이터 먼저 다 가져오기
             const savedName = sessionStorage.getItem('loggedInName');
             if (savedName) {
                 document.getElementById('login-overlay').style.display = 'none';
                 document.getElementById('logged-in-user').innerText = savedName;
+                renderAdminFunctions(); // 관리자 기능 노출 여부 결정
             }
         };
 
-        window.attemptLogin = function() {
-            const idInput = document.getElementById('emp-id').value.trim();
-            if (window.therapistDB[idInput]) {
-                const name = window.therapistDB[idInput];
-                sessionStorage.setItem('loggedInName', name);
-                document.getElementById('login-overlay').style.display = 'none';
-                document.getElementById('logged-in-user').innerText = name;
-                renderPreview();
-            } else {
-                alert("존재하지 않는 사원번호입니다.");
-            }
-        };
-
-        window.handleLoginEnter = function(e) {
-            if (e.key === 'Enter') attemptLogin();
-        }
-
-        window.logout = function() {
-            sessionStorage.removeItem('loggedInName');
-            location.reload(); // 새로고침해서 다시 로그인 화면으로
-        };
-
+        // 데이터 통합 로드 (치료사 명부 포함)
         async function loadAllData() {
             try {
-                const listRef = doc(db, "settings", "exerciseList");
-                const listSnap = await getDoc(listRef);
+                // 1. 치료사 명부 가져오기
+                const tSnap = await getDoc(doc(db, "settings", "therapists"));
+                if (tSnap.exists()) window.therapistDB = tSnap.data();
+                if (!window.therapistDB["0000"]) window.therapistDB["0000"] = "최고관리자";
+
+                // 2. 운동 목록 가져오기
+                const listSnap = await getDoc(doc(db, "settings", "exerciseList"));
                 window.exerciseData = listSnap.exists() ? listSnap.data() : {"안내": ["운동을 추가해 주세요"]};
 
-                const descRef = doc(db, "settings", "exerciseDescriptions");
-                const descSnap = await getDoc(descRef);
+                // 3. 설명 및 사진 가져오기
+                const descSnap = await getDoc(doc(db, "settings", "exerciseDescriptions"));
                 if (descSnap.exists()) window.exerciseDescriptions = descSnap.data();
-
-                const imgRef = doc(db, "settings", "exerciseImages");
-                const imgSnap = await getDoc(imgRef);
+                const imgSnap = await getDoc(doc(db, "settings", "exerciseImages"));
                 if (imgSnap.exists()) window.exerciseImages = imgSnap.data();
             } catch (e) { console.error(e); }
             renderControls();
             renderPreview();
         }
 
+        // 로그인 실행
+        window.attemptLogin = function() {
+            const idInput = document.getElementById('emp-id').value.trim();
+            if (window.therapistDB[idInput]) {
+                const name = window.therapistDB[idInput];
+                sessionStorage.setItem('loggedInID', idInput);
+                sessionStorage.setItem('loggedInName', name);
+                document.getElementById('login-overlay').style.display = 'none';
+                document.getElementById('logged-in-user').innerText = name;
+                renderAdminFunctions();
+                renderPreview();
+            } else {
+                alert("등록되지 않은 사원번호입니다.");
+            }
+        };
+
+        // 최고관리자 전용 기능 렌더링
+        function renderAdminFunctions() {
+            const loginID = sessionStorage.getItem('loggedInID');
+            const adminPanel = document.getElementById('super-admin-panel');
+            if (loginID === '0000') {
+                adminPanel.style.display = 'block';
+                renderTherapistList();
+            } else {
+                adminPanel.style.display = 'none';
+            }
+        }
+
+        // --- 치료사 관리 기능 ---
+        window.addTherapist = async function() {
+            const id = prompt("추가할 사원번호를 입력하세요:");
+            if (!id) return;
+            if (window.therapistDB[id]) return alert("이미 존재하는 번호입니다.");
+            const name = prompt("치료사 이름을 입력하세요:");
+            if (!name) return;
+
+            window.therapistDB[id] = name;
+            await setDoc(doc(db, "settings", "therapists"), window.therapistDB);
+            alert("등록되었습니다.");
+            renderTherapistList();
+        };
+
+        window.deleteTherapist = async function(id) {
+            if (id === '0000') return alert("최고관리자는 삭제할 수 없습니다.");
+            if (confirm(`[${window.therapistDB[id]}] 선생님을 삭제할까요?`)) {
+                delete window.therapistDB[id];
+                await setDoc(doc(db, "settings", "therapists"), window.therapistDB);
+                renderTherapistList();
+            }
+        };
+
+        function renderTherapistList() {
+            const listDiv = document.getElementById('t-list');
+            listDiv.innerHTML = "";
+            for (const [id, name] of Object.entries(window.therapistDB)) {
+                if (id === '0000') continue;
+                listDiv.innerHTML += `<div class="t-item"><span>${id}: ${name}</span> <button onclick="deleteTherapist('${id}')">삭제</button></div>`;
+            }
+        }
+        // -----------------------
+
+        window.logout = function() {
+            sessionStorage.clear();
+            location.reload();
+        };
+
+        // 기존 운동 관리 함수들 (유지)
         window.saveExerciseList = async function() {
-            try {
-                const categoryTitles = document.querySelectorAll('.category-title-text');
-                const newData = {};
-                categoryTitles.forEach(titleSpan => {
-                    const oldKey = titleSpan.getAttribute('data-old-key');
-                    const newKey = titleSpan.innerText.trim();
-                    newData[newKey] = window.exerciseData[oldKey] || [];
-                });
-                window.exerciseData = newData;
-                await setDoc(doc(db, "settings", "exerciseList"), window.exerciseData);
-                alert("목록이 저장되었습니다!");
-                window.isAdminMode = false;
-                renderControls();
-            } catch (e) { alert("저장 실패!"); }
+            const categoryTitles = document.querySelectorAll('.category-title-text');
+            const newData = {};
+            categoryTitles.forEach(titleSpan => {
+                const oldKey = titleSpan.getAttribute('data-old-key');
+                newData[titleSpan.innerText.trim()] = window.exerciseData[oldKey] || [];
+            });
+            window.exerciseData = newData;
+            await setDoc(doc(db, "settings", "exerciseList"), window.exerciseData);
+            alert("목록 저장 완료!"); window.isAdminMode = false; renderControls();
         }
 
         window.saveDescription = async function(id, text) {
-            try {
-                await setDoc(doc(db, "settings", "exerciseDescriptions"), { [id]: text }, { merge: true });
-                window.exerciseDescriptions[id] = text;
-                alert("설명이 저장되었습니다!");
-            } catch (e) { alert("저장 실패!"); }
+            await setDoc(doc(db, "settings", "exerciseDescriptions"), { [id]: text }, { merge: true });
+            alert("설명 저장!");
         }
 
         window.saveImageUrl = async function(id) {
-            let newUrl = prompt("이미지 주소를 입력하세요:", window.exerciseImages[id] || "");
-            if (newUrl !== null) {
-                // 방탄 코드 적용
+            let newUrl = prompt("이미지 주소 혹은 HTML 코드를 붙여넣으세요:", window.exerciseImages[id] || "");
+            if (newUrl) {
                 const srcMatch = newUrl.match(/src=["'](https?:\/\/[^"']+)["']/);
-                if (srcMatch) {
-                    newUrl = srcMatch[1]; 
-                } else {
-                    const urlMatch = newUrl.match(/https?:\/\/[^"'\s>]+/);
-                    if (urlMatch) newUrl = urlMatch[0]; 
-                }
-
-                try {
-                    await setDoc(doc(db, "settings", "exerciseImages"), { [id]: newUrl }, { merge: true });
-                    window.exerciseImages[id] = newUrl;
-                    alert("사진이 성공적으로 저장되었습니다!");
-                    renderPreview();
-                } catch (e) { alert("저장 실패!"); }
+                newUrl = srcMatch ? srcMatch[1] : (newUrl.match(/https?:\/\/[^"'\s>]+/)?.[0] || newUrl);
+                await setDoc(doc(db, "settings", "exerciseImages"), { [id]: newUrl }, { merge: true });
+                window.exerciseImages[id] = newUrl; alert("사진 저장!"); renderPreview();
             }
         }
 
         window.toggleAdmin = function() { window.isAdminMode = !window.isAdminMode; renderControls(); renderPreview(); }
-
-        window.addCategory = function() {
-            const name = prompt("부위 이름:");
-            if (name && !window.exerciseData[name]) { window.exerciseData[name] = []; renderControls(); }
+        window.addCategory = function() { 
+            const n = prompt("부위명:"); 
+            if(n) { window.exerciseData[n] = []; renderControls(); } 
         }
-
-        window.deleteCategory = function(joint) {
-            if(confirm(`[${joint}] 삭제?`)) { delete window.exerciseData[joint]; renderControls(); renderPreview(); }
-        }
-
-        window.addExercise = function(joint) {
-            const name = prompt("운동 이름:");
-            if (name) { window.exerciseData[joint].push(name); renderControls(); }
-        }
-
-        window.deleteExercise = function(joint, index) {
-            if(confirm("삭제?")) { window.exerciseData[joint].splice(index, 1); renderControls(); renderPreview(); }
-        }
-
-        window.handleCheck = function(checkbox) {
-            const joint = checkbox.getAttribute('data-joint');
-            const name = checkbox.getAttribute('data-name');
-            const id = `${joint}_${name}`;
-            if (checkbox.checked) window.selectedExercises.push({ joint, name, id });
+        window.deleteCategory = function(j) { if(confirm("삭제?")) { delete window.exerciseData[j]; renderControls(); renderPreview(); }}
+        window.addExercise = function(j) { const n = prompt("운동명:"); if(n) { window.exerciseData[j].push(n); renderControls(); }}
+        window.deleteExercise = function(j, i) { window.exerciseData[j].splice(i, 1); renderControls(); renderPreview(); }
+        window.handleCheck = function(c) {
+            const j = c.getAttribute('data-joint'), n = c.getAttribute('data-name'), id = `${j}_${n}`;
+            if (c.checked) window.selectedExercises.push({ joint:j, name:n, id:id });
             else window.selectedExercises = window.selectedExercises.filter(ex => ex.id !== id);
             renderPreview();
         }
 
         function renderControls() {
-            const controls = document.getElementById('controls');
-            controls.innerHTML = "";
+            const c = document.getElementById('controls'); c.innerHTML = "";
             for (const [joint, exercises] of Object.entries(window.exerciseData)) {
-                const div = document.createElement('div');
-                div.className = 'category-box';
-                div.innerHTML = `
-                    <div class="category-title">
-                        <span class="category-title-text" contenteditable="${window.isAdminMode}" data-old-key="${joint}">${joint}</span>
-                        ${window.isAdminMode ? `<div><button onclick="addExercise('${joint}')">+</button><button onclick="deleteCategory('${joint}')">🗑️</button></div>` : ''}
-                    </div>
-                `;
+                const div = document.createElement('div'); div.className = 'category-box';
+                div.innerHTML = `<div class="category-title"><span class="category-title-text" contenteditable="${window.isAdminMode}" data-old-key="${joint}">${joint}</span>
+                ${window.isAdminMode ? `<div><button onclick="addExercise('${joint}')">+</button><button onclick="deleteCategory('${joint}')">🗑️</button></div>` : ''}</div>`;
                 exercises.forEach((ex, idx) => {
-                    const item = document.createElement('div');
-                    item.className = 'exercise-item';
-                    const id = `${joint}_${ex}`;
-                    const isChecked = window.selectedExercises.some(s => s.id === id) ? 'checked' : '';
-                    item.innerHTML = `
-                        <label><input type="checkbox" data-joint="${joint}" data-name="${ex}" onchange="handleCheck(this)" ${isChecked}> ${ex}</label>
-                        ${window.isAdminMode ? `<button onclick="deleteExercise('${joint}', ${idx})">❌</button>` : ''}
-                    `;
-                    div.appendChild(item);
+                    const id = `${joint}_${ex}`; const isChecked = window.selectedExercises.some(s => s.id === id) ? 'checked' : '';
+                    div.innerHTML += `<div class="exercise-item"><label><input type="checkbox" data-joint="${joint}" data-name="${ex}" onchange="handleCheck(this)" ${isChecked}> ${ex}</label>
+                    ${window.isAdminMode ? `<button onclick="deleteExercise('${joint}', ${idx})">❌</button>` : ''}</div>`;
                 });
-                controls.appendChild(div);
+                c.appendChild(div);
             }
             document.getElementById('admin-area').innerHTML = window.isAdminMode ? 
-                `<button class="admin-btn save" onclick="saveExerciseList()">💾 전체 저장</button>
-                 <button class="admin-btn" onclick="addCategory()">➕ 부위 추가</button>
-                 <button class="admin-btn" onclick="toggleAdmin()">취소</button>` :
+                `<button class="admin-btn save" onclick="saveExerciseList()">💾 목록 전체 저장</button><button class="admin-btn" onclick="addCategory()">➕ 부위 추가</button><button class="admin-btn" onclick="toggleAdmin()">취소</button>` :
                 `<button class="admin-btn" onclick="toggleAdmin()">⚙️ 목록 수정(관리자)</button>`;
         }
 
         window.renderPreview = function() {
             const container = document.getElementById('page-container');
             const pName = document.getElementById('pIn').value || "________";
-            // 로그인한 사람의 이름을 가져옴 (없으면 공란)
             const tName = sessionStorage.getItem('loggedInName') || "________";
-            const total = window.selectedExercises.length;
             container.innerHTML = "";
-
-            if (total === 0) {
+            if (window.selectedExercises.length === 0) {
                 container.innerHTML = `<div class="a4-page"><p style="color:#ccc; text-align:center; margin-top:100px;">운동을 선택하세요.</p></div>`;
                 return;
             }
-
             window.selectedExercises.forEach((item, idx) => {
-                const page = document.createElement('div');
-                page.className = 'a4-page';
-                const id = item.id;
-                const desc = window.exerciseDescriptions[id] || "설명을 입력하세요.";
-                const imgSrc = window.exerciseImages[id] || "";
-                
-                const imgHtml = imgSrc ? `<img src="${imgSrc}" class="exercise-img">` : `<div class="no-img-placeholder">이미지를 등록해 주세요</div>`;
-
-                page.innerHTML = `
-                    <div class="page-header">
-                        <h1>재활 운동 가이드</h1>
-                        <div class="patient-info">환자: <b>${pName}</b>님 / 담당 치료사: <b>${tName}</b></div>
-                    </div>
-                    <div class="page-content">
-                        <div class="img-wrap">
-                            ${imgHtml}
-                            ${window.isAdminMode ? `<button class="no-print img-edit-btn" onclick="saveImageUrl('${id}')">🖼️ 사진수정</button>` : ''}
-                        </div>
-                        <div class="exercise-details">
-                            <h3>[${item.joint}] ${item.name}</h3>
-                            <div contenteditable="true" id="desc_${id}" class="editable-desc">${desc}</div>
-                            <button class="no-print save-btn" onclick="saveDescription('${id}', document.getElementById('desc_${id}').innerHTML)">💾 설명저장</button>
-                        </div>
-                    </div>
-                    <div class="page-num-indicator">${idx + 1} / ${total}</div>
-                `;
-                container.appendChild(page);
+                const id = item.id; const desc = window.exerciseDescriptions[id] || "방법을 입력하세요."; const imgSrc = window.exerciseImages[id] || "";
+                const imgHtml = imgSrc ? `<img src="${imgSrc}" class="exercise-img">` : `<div class="no-img-placeholder">사진을 등록해주세요</div>`;
+                container.innerHTML += `<div class="a4-page"><div class="page-header"><h1>재활 운동 가이드</h1><div class="patient-info">환자: <b>${pName}</b>님 / 담당: <b>${tName}</b></div></div>
+                    <div class="page-content"><div class="img-wrap">${imgHtml}${window.isAdminMode ? `<button class="no-print img-edit-btn" onclick="saveImageUrl('${id}')">🖼️ 사진수정</button>` : ''}</div>
+                    <div class="exercise-details"><h3>[${item.joint}] ${item.name}</h3><div contenteditable="true" id="desc_${id}" class="editable-desc">${desc}</div>
+                    <button class="no-print save-btn" onclick="saveDescription('${id}', document.getElementById('desc_${id}').innerHTML)">💾 설명저장</button></div></div>
+                    <div class="page-num-indicator">${idx + 1} / ${window.selectedExercises.length}</div></div>`;
             });
         }
-        loadAllData();
     </script>
     <style>
         body { font-family: 'Pretendard', sans-serif; margin: 0; display: flex; background: #515659; }
-        
-        /* 로그인 화면 디자인 */
-        #login-overlay { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: #515659; display: flex; justify-content: center; align-items: center; z-index: 9999; }
-        .login-box { background: white; padding: 40px; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); text-align: center; width: 300px; }
-        .login-box h2 { margin: 0 0 10px 0; color: #333; }
-        .login-box p { color: #666; font-size: 14px; margin-bottom: 20px; }
-        .login-box input { width: 100%; padding: 12px; margin-bottom: 15px; border: 1px solid #ccc; border-radius: 6px; box-sizing: border-box; font-size: 16px; text-align: center; }
-        .login-box button { width: 100%; padding: 12px; background: #007bff; color: white; border: none; border-radius: 6px; font-size: 16px; font-weight: bold; cursor: pointer; }
+        #login-overlay { position: fixed; inset: 0; background: #515659; display: flex; justify-content: center; align-items: center; z-index: 9999; }
+        .login-box { background: white; padding: 40px; border-radius: 12px; text-align: center; width: 300px; }
+        .login-box input { width: 100%; padding: 12px; margin: 15px 0; border: 1px solid #ccc; border-radius: 6px; text-align: center; }
+        .login-box button { width: 100%; padding: 12px; background: #007bff; color: white; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; }
         
         #sidebar { width: 300px; height: 100vh; background: #fff; padding: 20px; position: fixed; left: 0; top: 0; box-sizing: border-box; overflow-y: auto; z-index: 10; }
         #preview-area { margin-left: 300px; padding: 20px; width: calc(100% - 300px); display: flex; flex-direction: column; align-items: center; }
         
-        /* 로그인된 사용자 표시창 */
-        .user-profile { background: #e9ecef; padding: 12px; border-radius: 8px; margin-bottom: 15px; font-size: 14px; display: flex; justify-content: space-between; align-items: center; }
-        .user-profile span { font-weight: bold; color: #007bff; }
-        .logout-btn { background: #dc3545; color: white; border: none; padding: 4px 8px; border-radius: 4px; font-size: 12px; cursor: pointer; }
+        .user-profile { background: #f0f2f5; padding: 12px; border-radius: 8px; margin-bottom: 10px; font-size: 13px; display: flex; justify-content: space-between; align-items: center; }
+        .logout-btn { background: #ff4d4f; color: white; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer; }
+
+        /* 최고관리자 전용 패널 */
+        #super-admin-panel { background: #fffbe6; border: 1px solid #ffe58f; padding: 15px; border-radius: 8px; margin-bottom: 20px; display: none; }
+        #super-admin-panel h4 { margin: 0 0 10px 0; font-size: 14px; color: #856404; }
+        .t-item { display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 5px; border-bottom: 1px solid #eee; padding-bottom: 3px; }
+        .t-item button { padding: 0 4px; font-size: 10px; }
 
         .category-box { background: #f9f9f9; padding: 10px; margin-bottom: 10px; border-radius: 8px; }
         .category-title { font-weight: bold; color: #007bff; display: flex; justify-content: space-between; margin-bottom: 5px; }
-        .exercise-item { display: flex; justify-content: space-between; font-size: 14px; margin-bottom: 3px; }
-        .admin-btn { width: 100%; padding: 10px; margin-top: 5px; cursor: pointer; border-radius: 5px; border: 1px solid #ddd; }
+        .exercise-item { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 3px; }
+        .admin-btn { width: 100%; padding: 10px; margin-top: 5px; cursor: pointer; border-radius: 5px; border: 1px solid #ddd; font-size: 12px; }
         .admin-btn.save { background: #007bff; color: #fff; border: none; }
         
-        .a4-page { width: 297mm; height: 210mm; background: #fff; margin-bottom: 20px; padding: 15mm; box-sizing: border-box; display: flex; flex-direction: column; position: relative; box-shadow: 0 0 10px rgba(0,0,0,0.5); }
+        .a4-page { width: 297mm; height: 210mm; background: #fff; margin-bottom: 20px; padding: 15mm; box-sizing: border-box; display: flex; flex-direction: column; position: relative; }
         .page-header { border-bottom: 3px solid #333; display: flex; justify-content: space-between; align-items: center; padding-bottom: 10px; margin-bottom: 10mm; }
         .page-header h1 { margin: 0; font-size: 28pt; }
         .page-content { flex: 1; display: flex; gap: 30px; overflow: hidden; }
-        
         .img-wrap { width: 65%; height: 100%; display: flex; align-items: center; justify-content: center; background: #fafafa; border-radius: 12px; position: relative; overflow: hidden; border: 1px solid #eee; }
-        .exercise-img { max-width: 100%; max-height: 100%; object-fit: contain; } 
-        .no-img-placeholder { color: #ccc; font-size: 14px; }
-        
+        .exercise-img { max-width: 100%; max-height: 100%; object-fit: contain; }
         .exercise-details { width: 35%; display: flex; flex-direction: column; }
         .exercise-details h3 { margin: 0 0 15px 0; font-size: 22pt; color: #0056b3; }
         .editable-desc { flex: 1; font-size: 12pt; line-height: 1.8; padding: 15px; background: #fdfdfd; border: 1px solid #eee; border-radius: 10px; overflow-y: auto; }
-        
         .page-num-indicator { position: absolute; bottom: 10mm; right: 15mm; font-size: 10pt; color: #aaa; }
-        .img-edit-btn { position: absolute; bottom: 10px; left: 10px; padding: 5px; background: rgba(0,0,0,0.5); color: #fff; border: none; cursor: pointer; border-radius: 4px; }
+        .img-edit-btn { position: absolute; bottom: 10px; left: 10px; padding: 5px; background: rgba(0,0,0,0.5); color: #fff; border: none; border-radius: 4px; font-size: 11px; cursor: pointer; }
         .print-btn-fixed { position: fixed; top: 20px; right: 20px; padding: 10px 20px; background: #007bff; color: #fff; border: none; border-radius: 20px; cursor: pointer; z-index: 100; font-weight: bold; }
-        .save-btn { margin-top: 10px; padding: 8px; background: #52c41a; color: white; border: none; border-radius: 5px; cursor: pointer; }
+        .save-btn { margin-top: 10px; padding: 8px; background: #52c41a; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 12px; }
 
         @media print {
             @page { size: A4 landscape; margin: 0; }
             #sidebar, .print-btn-fixed, .no-print, #login-overlay { display: none !important; }
             #preview-area { margin: 0; padding: 0; width: 100%; }
-            .a4-page { width: 100vw; height: 100vh; margin: 0; box-shadow: none; page-break-after: always; }
-            .img-wrap { border: none; background: none; }
-            .no-img-placeholder { display: none; } 
+            .a4-page { width: 100vw; height: 100vh; margin: 0; page-break-after: always; }
         }
     </style>
 </head>
@@ -292,8 +259,8 @@
     <div id="login-overlay">
         <div class="login-box">
             <h2>재활 가이드 시스템</h2>
-            <p>사원번호를 입력해 주세요.</p>
-            <input type="text" id="emp-id" placeholder="사원번호 4자리 입력" onkeypress="handleLoginEnter(event)">
+            <p>사원번호를 입력하세요.</p>
+            <input type="text" id="emp-id" placeholder="사원번호 입력" onkeypress="if(event.key==='Enter')attemptLogin()">
             <button onclick="attemptLogin()">로그인</button>
         </div>
     </div>
@@ -302,12 +269,19 @@
     
     <div id="sidebar">
         <div class="user-profile no-print">
-            <div>담당자: <span id="logged-in-user">-</span></div>
+            <div><span id="logged-in-user">-</span></div>
             <button class="logout-btn" onclick="logout()">로그아웃</button>
+        </div>
+
+        <div id="super-admin-panel" class="no-print">
+            <h4>👨‍⚕️ 치료사 관리</h4>
+            <div id="t-list"></div>
+            <button class="admin-btn" onclick="addTherapist()" style="background:#28a745; color:white; border:none; margin-top:10px;">+ 새 치료사 등록</button>
         </div>
 
         <h3>설정</h3>
         <input type="text" id="pIn" placeholder="환자 성함 입력" oninput="renderPreview()" style="width:100%; padding:8px; margin-bottom:20px;">
+        
         <div id="controls"></div>
         <div id="admin-area"></div>
     </div>
