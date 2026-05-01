@@ -2,10 +2,10 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>재활 시스템 - 병원용 최종 최적화</title>
+    <title>재활 시스템 - 버튼 및 레이아웃 최적화</title>
     
     <style id="dynamic-print-style">
-        @media print { @page { size: A4 landscape; margin: 0; } }
+        @media print { @page { size: landscape; margin: 0; } }
     </style>
 
     <script type="module">
@@ -47,18 +47,14 @@
                 const tSnap = await getDoc(doc(db, "settings", "therapists"));
                 if (tSnap.exists()) window.therapistDB = tSnap.data();
                 if (!window.therapistDB["0000"]) window.therapistDB["0000"] = "최고관리자";
-
                 const pSnap = await getDoc(doc(db, "settings", "patients"));
                 if (pSnap.exists()) window.patientDB = pSnap.data();
-
                 const listSnap = await getDoc(doc(db, "settings", "exerciseList"));
                 let rawData = listSnap.exists() ? listSnap.data() : {"목": {"스트레칭": [], "운동": []}};
                 for (let key in rawData) { if (Array.isArray(rawData[key])) { rawData[key] = { "스트레칭": rawData[key], "운동": [] }; } }
                 window.exerciseData = rawData;
-
                 const descSnap = await getDoc(doc(db, "settings", "exerciseDescriptions"));
                 if (descSnap.exists()) window.exerciseDescriptions = descSnap.data();
-                
                 const imgSnap = await getDoc(doc(db, "settings", "exerciseImages"));
                 if (imgSnap.exists()) {
                     let loadedImgs = imgSnap.data();
@@ -85,32 +81,25 @@
         }
 
         window.addTherapist = async function() {
-            const id = prompt("사원번호 입력:"); if (!id) return;
-            const name = prompt("치료사 이름 입력:"); if (!name) return;
+            const id = prompt("사원번호:"); if (!id) return;
+            const name = prompt("이름:"); if (!name) return;
             window.therapistDB[id] = name;
             await setDoc(doc(db, "settings", "therapists"), window.therapistDB);
             renderTherapistList();
         };
 
         window.deleteTherapist = async function(id) {
-            if (id === '0000') return alert("최고관리자는 삭제 불가!");
-            if (confirm("삭제할까요?")) {
-                delete window.therapistDB[id];
-                await setDoc(doc(db, "settings", "therapists"), window.therapistDB);
-                renderTherapistList();
-            }
+            if (id === '0000') return alert("삭제 불가");
+            if (confirm("삭제?")) { delete window.therapistDB[id]; await setDoc(doc(db, "settings", "therapists"), window.therapistDB); renderTherapistList(); }
         };
 
         function renderTherapistList() {
             const listDiv = document.getElementById('t-list'); listDiv.innerHTML = "";
-            for (const [id, name] of Object.entries(window.therapistDB)) {
-                if (id !== '0000') listDiv.innerHTML += `<div class="t-item"><span>${id}: ${name}</span> <button onclick="deleteTherapist('${id}')">삭제</button></div>`;
-            }
+            for (const [id, name] of Object.entries(window.therapistDB)) { if (id !== '0000') listDiv.innerHTML += `<div class="t-item"><span>${id}: ${name}</span> <button onclick="deleteTherapist('${id}')">삭제</button></div>`; }
         }
 
         window.logout = function() { sessionStorage.clear(); location.reload(); };
 
-        // 🌟 인쇄 모드 전환 시 용지 설정까지 확실히 전달 🌟
         window.setPrintMode = function(mode) {
             const styleTag = document.getElementById('dynamic-print-style');
             if (mode === 'portrait') {
@@ -130,25 +119,18 @@
             const pName = document.getElementById('pIn').value.trim();
             const chartID = document.getElementById('chartIn').value.trim();
             const loggedInID = sessionStorage.getItem('loggedInID');
+            if (!pName || !chartID) return alert("성함과 병록번호 필수!");
+            if (window.selectedExercises.length === 0) return alert("운동 선택 필수!");
 
-            if (!pName || !chartID) return alert("환자 성함과 병록번호를 입력해 주세요!");
-            if (window.selectedExercises.length === 0) return alert("운동을 선택해 주세요!");
-
-            const key = `${chartID}_${pName}`;
-            window.patientDB[key] = {
-                chartID: chartID,
-                pName: pName,
+            const saveKey = `${chartID}_${pName}_${Date.now()}`; 
+            window.patientDB[saveKey] = {
+                chartID, pName,
                 exercises: window.selectedExercises,
                 therapistName: sessionStorage.getItem('loggedInName'),
                 therapistID: loggedInID,
-                date: new Date().toLocaleDateString()
+                date: new Date().toLocaleDateString() + " " + new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})
             };
-
-            try {
-                await setDoc(doc(db, "settings", "patients"), window.patientDB);
-                alert(`[${pName}] 환자님의 데이터가 저장되었습니다.`);
-                renderPatientList();
-            } catch (e) { alert("저장 실패!"); }
+            try { await setDoc(doc(db, "settings", "patients"), window.patientDB); alert("저장되었습니다."); renderPatientList(); } catch (e) { alert("실패!"); }
         };
 
         window.loadPatientRoutine = function(key) {
@@ -157,48 +139,66 @@
             document.getElementById('chartIn').value = pData.chartID;
             window.selectedExercises = [...pData.exercises]; 
             renderControls(); renderPreview();  
-            alert("환자 정보를 불러왔습니다.");
+            alert("로드 완료");
         };
 
         window.deletePatientRoutine = async function(key) {
-            if (confirm("삭제하시겠습니까?")) {
-                delete window.patientDB[key];
-                await setDoc(doc(db, "settings", "patients"), window.patientDB);
-                renderPatientList();
-            }
+            if (confirm("삭제?")) { delete window.patientDB[key]; await setDoc(doc(db, "settings", "patients"), window.patientDB); renderPatientList(); }
         };
 
         function renderPatientList() {
             const pListDiv = document.getElementById('patient-list-container'); pListDiv.innerHTML = "";
             const currentID = sessionStorage.getItem('loggedInID');
-            
-            // 🌟 권한 필터링: 관리자는 전체, 일반 사원은 본인 환자만 🌟
-            const patients = Object.entries(window.patientDB)
-                .filter(([k, d]) => (currentID === '0000' || d.therapistID === currentID))
-                .sort((a,b) => b[1].date.localeCompare(a[1].date));
-            
-            if (patients.length === 0) { pListDiv.innerHTML = `<p style="text-align:center; color:#999; font-size:12px;">표시할 환자가 없습니다.</p>`; return; }
-            
-            patients.forEach(([key, data]) => {
-                pListDiv.innerHTML += `
-                    <div class="patient-card">
-                        <div class="p-card-header"><strong>${data.pName}</strong> <span>(#${data.chartID})</span></div>
-                        <div class="p-card-info">${data.date} / 담당: ${data.therapistName}</div>
-                        <div class="p-card-actions">
-                            <button class="p-btn-load" onclick="loadPatientRoutine('${key}')">불러오기</button>
-                            <button class="p-btn-del" onclick="deletePatientRoutine('${key}')">삭제</button>
-                        </div>
-                    </div>`;
+            const grouped = {};
+            Object.entries(window.patientDB).forEach(([key, d]) => {
+                if (currentID !== '0000' && d.therapistID !== currentID) return;
+                const pKey = `${d.chartID}_${d.pName}`;
+                if (!grouped[pKey]) grouped[pKey] = [];
+                grouped[pKey].push({ key, ...d });
             });
+            for (const [pKey, records] of Object.entries(grouped)) {
+                const sortedRecords = records.sort((a,b) => b.key.split('_')[2] - a.key.split('_')[2]); 
+                const pName = sortedRecords[0].pName;
+                const chartID = sortedRecords[0].chartID;
+                const groupDiv = document.createElement('div');
+                groupDiv.className = 'patient-group';
+                groupDiv.innerHTML = `
+                    <div class="patient-group-title" onclick="this.nextElementSibling.classList.toggle('active')">
+                        <strong>👤 ${pName}</strong> <span style="font-size:11px;">(#${chartID})</span>
+                    </div>
+                    <div class="patient-group-content">
+                        ${sortedRecords.map(r => `
+                            <div class="visit-record">
+                                <div class="visit-date">📅 ${r.date}</div>
+                                <div class="p-card-actions">
+                                    <button class="p-btn-load" onclick="loadPatientRoutine('${r.key}')">불러오기</button>
+                                    <button class="p-btn-del" onclick="deletePatientRoutine('${r.key}')">삭제</button>
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                `;
+                pListDiv.appendChild(groupDiv);
+            }
         }
 
         window.saveExerciseList = async function() {
-            const titles = document.querySelectorAll('.category-title-text');
+            const categories = document.querySelectorAll('.category-box');
             const newData = {};
-            titles.forEach(t => { const oldKey = t.getAttribute('data-old-key'); newData[t.innerText.trim()] = window.exerciseData[oldKey] || {"스트레칭": [], "운동": []}; });
+            categories.forEach(cat => {
+                const catTitle = cat.querySelector('.category-title-text').innerText.trim();
+                newData[catTitle] = {};
+                const folders = cat.querySelectorAll('.folder-box');
+                folders.forEach(fld => {
+                    const fTitle = fld.querySelector('.folder-title-text').innerText.trim();
+                    const oldKey = fld.getAttribute('data-old-folder-key');
+                    const parentCat = cat.querySelector('.category-title-text').getAttribute('data-old-key');
+                    newData[catTitle][fTitle] = window.exerciseData[parentCat][oldKey] || [];
+                });
+            });
             window.exerciseData = newData;
             await setDoc(doc(db, "settings", "exerciseList"), window.exerciseData);
-            alert("저장 완료!"); window.isAdminMode = false; renderControls();
+            alert("전체 목록 및 폴더명이 저장되었습니다!"); window.isAdminMode = false; renderControls();
         }
 
         window.saveDescription = async function(id, text) { await setDoc(doc(db, "settings", "exerciseDescriptions"), { [id]: text }, { merge: true }); alert("설명 저장!"); }
@@ -214,25 +214,28 @@
                     canvas.width = w; canvas.height = h;
                     canvas.getContext('2d').drawImage(img, 0, 0, w, h);
                     const base64 = canvas.toDataURL('image/jpeg', 0.7); 
-                    let currentImgs = window.exerciseImages[id] || [];
-                    if (typeof currentImgs === 'string') currentImgs = [currentImgs];
-                    currentImgs.push(base64);
-                    try { await setDoc(doc(db, "settings", "exerciseImages"), { [id]: currentImgs }, { merge: true }); window.exerciseImages[id] = currentImgs; renderPreview(); } catch (e) { alert("용량 초과!"); }
+                    let imgs = window.exerciseImages[id] || []; if (typeof imgs === 'string') imgs = [imgs];
+                    imgs.push(base64);
+                    try { await setDoc(doc(db, "settings", "exerciseImages"), { [id]: imgs }, { merge: true }); window.exerciseImages[id] = imgs; renderPreview(); } catch (e) { alert("용량 초과"); }
                 }
             };
         }
 
-        window.clearImages = async function(id) { if (confirm("지울까요?")) { await setDoc(doc(db, "settings", "exerciseImages"), { [id]: [] }, { merge: true }); window.exerciseImages[id] = []; renderPreview(); } }
-        window.uploadLocalFile = function(input, id) { if(input.files[0]) processAndSaveImage(input.files[0], id); }
+        window.clearImages = async function(id) { if (confirm("전체 삭제?")) { await setDoc(doc(db, "settings", "exerciseImages"), { [id]: [] }, { merge: true }); window.exerciseImages[id] = []; renderPreview(); } }
         window.handlePaste = function(e, id) {
             const items = (e.clipboardData || e.originalEvent.clipboardData).items;
             for (let i in items) { if (items[i].kind === 'file' && items[i].type.startsWith('image/')) { processAndSaveImage(items[i].getAsFile(), id); break; } }
         }
 
-        window.toggleAdmin = function() { window.isAdminMode = !window.isAdminMode; renderControls(); const btn = document.getElementById('admin-toggle-btn'); if(window.isAdminMode) { btn.innerText = "❌ 수정 완료"; btn.style.background = "#dc3545"; } else { btn.innerText = "⚙️ 목록 수정"; btn.style.background = "#6c757d"; } }
-        window.addCategory = function() { const n = prompt("부위명:"); if(n && !window.exerciseData[n]) { window.exerciseData[n] = {"스트레칭": [], "운동": []}; renderControls(); } }
+        window.toggleAdmin = function() { 
+            window.isAdminMode = !window.isAdminMode; renderControls(); 
+            const btn = document.getElementById('admin-toggle-btn');
+            btn.innerText = window.isAdminMode ? "❌ 수정 완료" : "⚙️ 목록 수정";
+            btn.style.background = window.isAdminMode ? "#dc3545" : "#6c757d";
+        }
+        window.addCategory = function() { const n = prompt("부위명:"); if(n) { window.exerciseData[n] = {"스트레칭": [], "운동": []}; renderControls(); } }
         window.deleteCategory = function(j) { if(confirm("삭제?")) { delete window.exerciseData[j]; renderControls(); renderPreview(); }}
-        window.addFolder = function(j) { const f = prompt("폴더명:"); if (f && !window.exerciseData[j][f]) { window.exerciseData[j][f] = []; renderControls(); } }
+        window.addFolder = function(j) { const f = prompt("폴더명:"); if (f) { window.exerciseData[j][f] = []; renderControls(); } }
         window.deleteFolder = function(j, f) { if(confirm("삭제?")) { delete window.exerciseData[j][f]; renderControls(); renderPreview(); } }
         window.addExercise = function(j, f) { const n = prompt("운동명:"); if(n) { window.exerciseData[j][f].push(n); renderControls(); } }
         window.deleteExercise = function(j, f, i) { window.exerciseData[j][f].splice(i, 1); renderControls(); renderPreview(); }
@@ -248,15 +251,15 @@
                 const div = document.createElement('div'); div.className = 'category-box';
                 div.innerHTML = `<div class="category-title"><span class="category-title-text" contenteditable="${window.isAdminMode}" data-old-key="${joint}" style="${window.isAdminMode ? 'background:#fff; border:1px solid #ccc; padding:0 4px;' : ''}">${joint}</span>${window.isAdminMode ? `<div><button onclick="addFolder('${joint}')">📁+</button> <button onclick="deleteCategory('${joint}')">🗑️</button></div>` : ''}</div>`;
                 for (const [folder, exercises] of Object.entries(folders)) {
-                    const fDiv = document.createElement('div'); fDiv.className = 'folder-box';
-                    fDiv.innerHTML = `<div class="folder-title"><span>📂 ${folder}</span>${window.isAdminMode ? `<div><button onclick="addExercise('${joint}', '${folder}')">+</button> <button onclick="deleteFolder('${joint}', '${folder}')">🗑️</button></div>` : ''}</div>`;
+                    const fDiv = document.createElement('div'); fDiv.className = 'folder-box'; fDiv.setAttribute('data-old-folder-key', folder);
+                    fDiv.innerHTML = `<div class="folder-title"><span>📂 <span class="folder-title-text" contenteditable="${window.isAdminMode}" style="${window.isAdminMode ? 'background:#fff; border:1px dashed #aaa;' : ''}">${folder}</span></span>${window.isAdminMode ? `<div><button onclick="addExercise('${joint}', '${folder}')">+</button> <button onclick="deleteFolder('${joint}', '${folder}')">🗑️</button></div>` : ''}</div>`;
                     exercises.forEach((ex, idx) => {
                         const id = `${joint}_${ex}`; const isChecked = window.selectedExercises.some(s => s.id === id) ? 'checked' : '';
                         fDiv.innerHTML += `<div class="exercise-item"><label><input type="checkbox" data-joint="${joint}" data-folder="${folder}" data-name="${ex}" onchange="handleCheck(this)" ${isChecked}> ${ex}</label>${window.isAdminMode ? `<button onclick="deleteExercise('${joint}', '${folder}', ${idx})">❌</button>` : ''}</div>`;
                     }); div.appendChild(fDiv);
                 } c.appendChild(div);
             }
-            document.getElementById('admin-area').innerHTML = window.isAdminMode ? `<button class="admin-btn save" onclick="saveExerciseList()">💾 전체 저장</button><button class="admin-btn" onclick="addCategory()" style="background:#28a745; color:white;">➕ 부위 추가</button>` : '';
+            document.getElementById('admin-area').innerHTML = window.isAdminMode ? `<button class="admin-btn save" onclick="saveExerciseList()">💾 명칭 및 목록 저장</button><button class="admin-btn" onclick="addCategory()" style="background:#28a745; color:white;">➕ 부위 추가</button>` : '';
         }
 
         window.renderPreview = function() {
@@ -268,24 +271,30 @@
             
             window.selectedExercises.forEach((item, idx) => {
                 const id = item.id; const desc = window.exerciseDescriptions[id] || "방법을 입력하세요."; 
-                let imgs = window.exerciseImages[id] || [];
-                if (typeof imgs === 'string') imgs = [imgs];
+                let imgs = window.exerciseImages[id] || []; if (typeof imgs === 'string') imgs = [imgs];
+                let imgHtml = imgs.length === 0 ? `<div class="no-img-placeholder">Ctrl+V로 사진 추가</div>` : `<div class="vertical-img-container">${imgs.map((src, i) => `<div class="split-img-item"><img src="${src}"><div class="img-idx-badge">${i+1}</div></div>`).join('')}</div>`;
+                const fileUploadHtml = `<div class="no-print" style="position: absolute; bottom: 10px; left: 10px; display:flex; gap:8px;"><button class="img-edit-btn" onclick="document.getElementById('f_${id}').click()">📁 사진추가</button>${imgs.length > 0 ? `<button class="img-edit-btn" style="background:#dc3545;" onclick="clearImages('${id}')">🗑️ 지우기</button>` : ''}<input type="file" id="f_${id}" accept="image/*" style="display:none" onchange="uploadLocalFile(this, '${id}')"></div>`;
                 
-                let imgHtml = '';
-                if (imgs.length === 0) {
-                    imgHtml = `<div class="no-img-placeholder">Ctrl+V로 사진 추가</div>`;
-                } else {
-                    // 🌟 사진 개수에 상관없이 위/아래로 꽉 채워 배치 🌟
-                    const imagesTags = imgs.map((src, i) => `
-                        <div class="split-img-item">
-                            <img src="${src}">
-                            <div class="img-idx-badge">${i+1}</div>
-                        </div>`).join('');
-                    imgHtml = `<div class="vertical-img-container">${imagesTags}</div>`;
-                }
-                
-                const fileUploadHtml = `<div class="no-print" style="position: absolute; bottom: 10px; left: 10px; display:flex; gap:8px;"><input type="file" id="f_${id}" accept="image/*" style="display:none" onchange="uploadLocalFile(this, '${id}')"><button class="img-edit-btn" onclick="document.getElementById('f_${id}').click()">📁 사진추가</button>${imgs.length > 0 ? `<button class="img-edit-btn" style="background:#dc3545;" onclick="clearImages('${id}')">🗑️ 지우기</button>` : ''}</div>`;
-                container.innerHTML += `<div class="a4-page"><div class="page-header"><h1>재활 운동 가이드</h1><div class="patient-info">환자: <b>${pName}</b>님 / 담당치료사: <b>${tName}</b></div></div><div class="page-content"><div class="img-wrap" tabindex="0" onpaste="handlePaste(event, '${id}')">${imgHtml}${fileUploadHtml}</div><div class="exercise-details"><h3>[${item.joint}] ${item.name}</h3><div contenteditable="true" id="desc_${id}" class="editable-desc">${desc}</div><button class="no-print save-btn" onclick="saveDescription('${id}', document.getElementById('desc_${id}').innerHTML)">💾 설명저장</button></div></div><div class="page-num-indicator">${idx + 1} / ${window.selectedExercises.length}</div></div>`;
+                // 🌟 버튼 위치 상단으로 이동 및 레이아웃 구조 변경 🌟
+                container.innerHTML += `
+                <div class="a4-page">
+                    <div class="page-header">
+                        <h1>재활 운동 가이드</h1>
+                        <div class="patient-info">환자: <b>${pName}</b>님 / 담당치료사: <b>${tName}</b></div>
+                    </div>
+                    <div class="page-content">
+                        <div class="img-wrap" tabindex="0" onpaste="handlePaste(event, '${id}')">${imgHtml}${fileUploadHtml}</div>
+                        <div class="exercise-details">
+                            <div class="exercise-title-row">
+                                <h3>[${item.joint}] ${item.name}</h3>
+                                <button class="no-print save-btn" onclick="saveDescription('${id}', document.getElementById('desc_${id}').innerHTML)">💾 저장</button>
+                            </div>
+                            <div contenteditable="true" id="desc_${id}" class="editable-desc">${desc}</div>
+                            <div class="qr-placeholder no-print">📹 영상 QR 코드 (준비 중)</div>
+                        </div>
+                    </div>
+                    <div class="page-num-indicator">${idx + 1} / ${window.selectedExercises.length}</div>
+                </div>`;
             });
         }
     </script>
@@ -304,48 +313,56 @@
         .top-right-controls { position: fixed; top: 20px; right: 365px; display: flex; gap: 8px; z-index: 1000; }
         .mode-btn { padding: 10px 15px; background: #fff; border: 1px solid #ccc; border-radius: 20px; cursor: pointer; font-weight: bold; font-size: 13px; box-shadow: 0 4px 8px rgba(0,0,0,0.2); }
         .mode-btn.active { background: #17a2b8; color: white; border-color: #17a2b8; }
-        .admin-toggle-btn { padding: 10px 15px; background: #6c757d; color: #fff; border: none; border-radius: 20px; cursor: pointer; font-weight: bold; font-size: 13px; }
+        .admin-toggle-btn { width: 100%; padding: 10px; margin-top: 10px; background: #6c757d; color: #fff; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; font-size: 13px; }
         .print-btn-fixed { padding: 10px 20px; background: #007bff; color: #fff; border: none; border-radius: 20px; cursor: pointer; font-weight: bold; }
 
         .user-profile { background: #e9ecef; padding: 12px; border-radius: 8px; margin-bottom: 10px; font-size: 13px; display: flex; justify-content: space-between; align-items: center; }
         .logout-btn { background: #ff4d4f; color: white; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer; }
         #super-admin-panel { background: #fffbe6; border: 1px solid #ffe58f; padding: 15px; border-radius: 8px; margin-bottom: 20px; display: none; }
-        .t-item { display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 5px; border-bottom: 1px solid #eee; }
 
         .category-box { background: #f0f4f8; padding: 10px; margin-bottom: 10px; border-radius: 8px; }
-        .category-title { font-weight: bold; color: #0056b3; display: flex; justify-content: space-between; }
-        .folder-box { margin-left: 8px; border-left: 2px solid #ccc; padding-left: 10px; margin-top: 5px; }
-        .folder-title { font-size: 13px; font-weight: bold; display: flex; justify-content: space-between; margin-top: 5px; }
+        .category-title { font-weight: bold; color: #0056b3; display: flex; justify-content: space-between; margin-bottom: 5px; }
+        .folder-box { margin-left: 8px; border-left: 2px solid #ccc; padding-left: 10px; margin-top: 8px; }
+        .folder-title { font-size: 13px; font-weight: bold; display: flex; justify-content: space-between; margin-bottom: 5px; color:#555; }
         .exercise-item { font-size: 13px; margin-bottom: 4px; }
-        .admin-btn { width: 100%; padding: 10px; margin-top: 5px; cursor: pointer; border-radius: 5px; font-size: 12px; }
+        .admin-btn { width: 100%; padding: 10px; margin-top: 5px; cursor: pointer; border-radius: 5px; font-size: 12px; font-weight: bold; }
         
-        /* 🌟 사진 꽉 채우기 및 위/아래 분할 스타일 🌟 */
-        .vertical-img-container { display: flex; flex-direction: column; width: 100%; height: 100%; }
-        .split-img-item { flex: 1; position: relative; width: 100%; height: 50%; overflow: hidden; border-bottom: 1px solid #ddd; }
-        .split-img-item:last-child { border-bottom: none; }
-        .split-img-item img { width: 100%; height: 100%; object-fit: cover; } /* 🌟 원본 비율 무시하고 꽉 채움 🌟 */
-        .img-idx-badge { position: absolute; bottom: 8px; right: 8px; background: rgba(0,0,0,0.6); color: #fff; padding: 2px 8px; border-radius: 10px; font-size: 12px; font-weight: bold; }
-
-        .patient-panel-header { font-size: 18px; font-weight: bold; margin-bottom: 10px; border-bottom: 2px solid #007bff; }
-        .save-routine-btn { width: 100%; padding: 12px; background: #28a745; color: white; border: none; border-radius: 8px; font-weight: bold; margin-bottom: 15px; cursor: pointer; }
-        .patient-card { background: #fff; padding: 12px; border-radius: 8px; margin-bottom: 10px; border: 1px solid #e1e4e8; }
-        .p-card-header { display: flex; justify-content: space-between; }
-        .p-card-header strong { color: #007bff; font-size: 15px; }
-        .p-card-actions { display: flex; gap: 5px; margin-top: 8px; }
-        .p-btn-load { flex: 2; padding: 6px; cursor: pointer; }
-        .p-btn-del { flex: 1; color: #ff4d4f; border: 1px solid #ff4d4f; background: #fff; cursor: pointer; }
+        .patient-group { margin-bottom: 10px; background: white; border-radius: 8px; border: 1px solid #e1e4e8; overflow: hidden; }
+        .patient-group-title { padding: 12px; background: #fff; cursor: pointer; display: flex; justify-content: space-between; align-items: center; transition: 0.2s; }
+        .patient-group-title:hover { background: #f0f7ff; }
+        .patient-group-content { display: none; padding: 0 10px 10px 10px; background: #fafafa; }
+        .patient-group-content.active { display: block; }
+        .visit-record { padding: 10px; border-top: 1px solid #eee; }
+        .visit-date { font-size: 11px; color: #777; margin-bottom: 5px; }
+        .p-card-actions { display: flex; gap: 5px; }
+        .p-btn-load { flex: 2; padding: 6px; font-size: 11px; cursor: pointer; background:#eee; border:1px solid #ccc; border-radius:4px; font-weight:bold;}
+        .p-btn-del { flex: 1; padding: 6px; font-size: 11px; color: #ff4d4f; border: 1px solid #ff4d4f; background: #fff; cursor: pointer; border-radius:4px;}
 
         .a4-page { background: #fff; margin-bottom: 20px; padding: 15mm; box-sizing: border-box; display: flex; flex-direction: column; position: relative; box-shadow: 0 5px 15px rgba(0,0,0,0.3); overflow: hidden; }
         .page-header { border-bottom: 3px solid #333; display: flex; justify-content: space-between; align-items: center; padding-bottom: 5px; margin-bottom: 8mm; }
         .page-header h1 { margin: 0; font-size: 28pt; }
         .page-content { flex: 1; display: flex; overflow: hidden; }
-        .img-wrap { display: flex; align-items: center; justify-content: center; background: #fafafa; border-radius: 12px; position: relative; overflow: hidden; border: 2px dashed #ddd; outline: none; }
-        .exercise-details { display: flex; flex-direction: column; }
-        .exercise-details h3 { margin: 0 0 10px 0; font-size: 22pt; color: #0056b3; }
-        .editable-desc { flex: 1; font-size: 12pt; line-height: 1.7; padding: 12px; background: #fdfdfd; border: 1px solid #eee; border-radius: 10px; overflow-y: auto; }
+        .img-wrap { display: flex; align-items: center; justify-content: center; background: #fafafa; border-radius: 12px; position: relative; overflow: hidden; border: 2px dashed #ddd; outline: none; transition: 0.2s; }
+        .vertical-img-container { display: flex; flex-direction: column; width: 100%; height: 100%; }
+        .split-img-item { flex: 1; position: relative; width: 100%; height: 50%; overflow: hidden; border-bottom: 1px solid #ddd; }
+        .split-img-item img { width: 100%; height: 100%; object-fit: cover; }
+        .img-idx-badge { position: absolute; bottom: 8px; right: 8px; background: rgba(0,0,0,0.6); color: #fff; padding: 2px 8px; border-radius: 10px; font-size: 12px; font-weight: bold; }
+
+        .exercise-details { display: flex; flex-direction: column; position: relative; }
+        
+        /* 🌟 제목과 버튼을 한 줄에 정렬하는 새로운 클래스 🌟 */
+        .exercise-title-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; gap: 10px; }
+        .exercise-title-row h3 { margin: 0; font-size: 20pt; color: #0056b3; line-height: 1.2; flex: 1; word-break: keep-all; }
+        
+        /* 🌟 컴팩트해진 '설명저장' 버튼 스타일 🌟 */
+        .save-btn { padding: 5px 12px; background: #52c41a; color: white; border: none; border-radius: 4px; font-size: 12px; font-weight: bold; cursor: pointer; white-space: nowrap; box-shadow: 0 2px 4px rgba(0,0,0,0.2); }
+        .save-btn:hover { background: #45a016; }
+
+        .editable-desc { flex: 1; font-size: 12pt; line-height: 1.7; padding: 12px; background: #fdfdfd; border: 1px solid #eee; border-radius: 10px; overflow-y: auto; min-height: 0; }
+        .qr-placeholder { position: absolute; bottom: 10px; right: 10px; font-size: 10px; color: #ccc; border: 1px dashed #ccc; padding: 5px; text-align: center; width: 60px; height: 60px; display: flex; align-items: center; justify-content: center;}
+        
         .page-num-indicator { position: absolute; bottom: 10mm; right: 15mm; font-size: 10pt; color: #aaa; }
         .img-edit-btn { background: #333; color: #fff; border: none; border-radius: 4px; font-size: 11px; padding: 4px 8px; cursor: pointer; }
-        .save-btn { margin-top: 8px; padding: 8px; background: #52c41a; color: white; border: none; border-radius: 5px; font-size: 12px; font-weight: bold; }
 
         .landscape-mode .a4-page { width: 297mm; height: 210mm; }
         .landscape-mode .page-content { flex-direction: row; gap: 20px; }
@@ -355,7 +372,8 @@
         .portrait-mode .a4-page { width: 210mm; height: 297mm; }
         .portrait-mode .page-content { flex-direction: column; gap: 15px; }
         .portrait-mode .img-wrap { height: 60%; width: 100%; flex: none; } 
-        .portrait-mode .exercise-details { height: 40%; width: 100%; flex: none; } 
+        .portrait-mode .exercise-details { height: 40%; width: 100%; flex: none; display: flex; flex-direction: column; } 
+        .portrait-mode .editable-desc { font-size: 13pt; min-height: 0; } 
 
         @media print {
             #sidebar, #patient-panel, .top-right-controls, .no-print, #login-overlay { display: none !important; }
@@ -380,32 +398,32 @@
     <div class="top-right-controls no-print">
         <button id="mode-landscape-btn" class="mode-btn active" onclick="setPrintMode('landscape')">🗤 가로 모드</button>
         <button id="mode-portrait-btn" class="mode-btn" onclick="setPrintMode('portrait')">📄 세로 모드</button>
-        <button id="admin-toggle-btn" class="admin-toggle-btn" onclick="toggleAdmin()">⚙️ 목록 수정</button>
         <button class="print-btn-fixed" onclick="window.print()">🖨️ 인쇄하기</button>
     </div>
     
     <div id="sidebar">
         <div class="user-profile no-print"><div><span id="logged-in-user">-</span></div><button class="logout-btn" onclick="logout()">로그아웃</button></div>
-        <div id="super-admin-panel" class="no-print"><h4>👨‍⚕️ 치료사 관리</h4><div id="t-list"></div><button class="admin-btn" onclick="addTherapist()" style="background:#28a745; color:white; border:none; margin-top:10px;">+ 새 치료사 등록</button></div>
         
         <h3>처방 설정</h3>
         <div style="margin-bottom:10px;">
-            <label style="font-size:11px; color:#666;">환자 성함</label>
-            <input type="text" id="pIn" placeholder="환자 성함 입력" oninput="renderPreview()" style="width:100%; padding:8px; border:1px solid #ddd; border-radius:4px;">
+            <input type="text" id="pIn" placeholder="환자 성함" oninput="renderPreview()" style="width:100%; padding:8px; border:1px solid #ddd; border-radius:4px;">
         </div>
-        <div style="margin-bottom:20px;">
-            <label style="font-size:11px; color:#666;">병록번호(ID) - 관리용</label>
-            <input type="text" id="chartIn" placeholder="병록번호 입력" style="width:100%; padding:8px; border:1px solid #ddd; border-radius:4px;">
+        <div style="margin-bottom:10px;">
+            <input type="text" id="chartIn" placeholder="병록번호(ID)" style="width:100%; padding:8px; border:1px solid #ddd; border-radius:4px;">
         </div>
 
-        <div id="controls"></div>
+        <button id="admin-toggle-btn" class="admin-toggle-btn" onclick="toggleAdmin()">⚙️ 목록 수정</button>
+
+        <div id="super-admin-panel" class="no-print"><h4>👨‍⚕️ 치료사 관리</h4><div id="t-list"></div><button class="admin-btn" onclick="addTherapist()" style="background:#28a745; color:white; border:none; margin-top:10px;">+ 새 치료사 등록</button></div>
+        
+        <div id="controls" style="margin-top:20px;"></div>
         <div id="admin-area"></div>
     </div>
 
     <div id="patient-panel" class="no-print">
         <div class="patient-panel-header">📋 환자 처방 관리</div>
         <button class="save-routine-btn" onclick="savePatientRoutine()">💾 현재 처방 저장하기</button>
-        <div style="font-size: 13px; font-weight: bold; margin-bottom: 10px; color: #555;">나의 환자 목록</div>
+        <div style="font-size: 13px; font-weight: bold; margin-bottom: 10px; color: #555;">나의 환자 목록 (이름 클릭 시 내역 확장)</div>
         <div id="patient-list-container"></div>
     </div>
     
