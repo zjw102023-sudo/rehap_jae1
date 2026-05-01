@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>재활 시스템 - 사진 파일 직접 업로드 버전</title>
+    <title>재활 시스템 - 복붙 및 UI 최적화 버전</title>
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
         import { getFirestore, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
@@ -133,11 +133,8 @@
             alert("설명 저장!");
         }
 
-        // 🌟 핵심 기능: 내 컴퓨터 사진 직접 업로드 및 자동 압축 🌟
-        window.uploadLocalImage = function(inputElement, id) {
-            const file = inputElement.files[0];
-            if (!file) return;
-
+        // --- 🌟 이미지 처리 핵심 함수 (파일 선택 & 복붙 공용) ---
+        window.processAndSaveImage = function(file, id) {
             const reader = new FileReader();
             reader.readAsDataURL(file);
             reader.onload = function(event) {
@@ -147,7 +144,7 @@
                     const canvas = document.createElement('canvas');
                     let width = img.width;
                     let height = img.height;
-                    const MAX_SIZE = 800; // 무료 용량을 지키기 위한 자동 리사이징
+                    const MAX_SIZE = 800; // 자동 압축
 
                     if (width > height) {
                         if (width > MAX_SIZE) {
@@ -165,7 +162,6 @@
                     const ctx = canvas.getContext('2d');
                     ctx.drawImage(img, 0, 0, width, height);
 
-                    // 이미지를 가벼운 텍스트(Base64)로 변환
                     const base64String = canvas.toDataURL('image/jpeg', 0.8); 
 
                     try {
@@ -180,7 +176,39 @@
             };
         }
 
-        window.toggleAdmin = function() { window.isAdminMode = !window.isAdminMode; renderControls(); renderPreview(); }
+        // 파일 버튼으로 올릴 때
+        window.uploadLocalFile = function(inputElement, id) {
+            const file = inputElement.files[0];
+            if (file) processAndSaveImage(file, id);
+        }
+
+        // Ctrl+V 로 붙여넣기 할 때
+        window.handlePaste = function(event, id) {
+            const items = (event.clipboardData || event.originalEvent.clipboardData).items;
+            for (let index in items) {
+                const item = items[index];
+                if (item.kind === 'file' && item.type.startsWith('image/')) {
+                    const file = item.getAsFile();
+                    processAndSaveImage(file, id);
+                    break; 
+                }
+            }
+        }
+        // ----------------------------------------------------
+
+        window.toggleAdmin = function() { 
+            window.isAdminMode = !window.isAdminMode; 
+            renderControls(); 
+            // 관리자 모드 토글 버튼 텍스트 변경
+            const toggleBtn = document.getElementById('admin-toggle-btn');
+            if(window.isAdminMode) {
+                toggleBtn.innerText = "❌ 수정 완료";
+                toggleBtn.style.background = "#dc3545";
+            } else {
+                toggleBtn.innerText = "⚙️ 목록 수정";
+                toggleBtn.style.background = "#6c757d";
+            }
+        }
         window.addCategory = function() { 
             const n = prompt("부위명:"); 
             if(n) { window.exerciseData[n] = []; renderControls(); } 
@@ -199,7 +227,7 @@
             const c = document.getElementById('controls'); c.innerHTML = "";
             for (const [joint, exercises] of Object.entries(window.exerciseData)) {
                 const div = document.createElement('div'); div.className = 'category-box';
-                div.innerHTML = `<div class="category-title"><span class="category-title-text" contenteditable="${window.isAdminMode}" data-old-key="${joint}">${joint}</span>
+                div.innerHTML = `<div class="category-title"><span class="category-title-text" contenteditable="${window.isAdminMode}" data-old-key="${joint}" style="${window.isAdminMode ? 'background:#fff; border:1px solid #ccc; padding:0 4px;' : ''}">${joint}</span>
                 ${window.isAdminMode ? `<div><button onclick="addExercise('${joint}')">+</button><button onclick="deleteCategory('${joint}')">🗑️</button></div>` : ''}</div>`;
                 exercises.forEach((ex, idx) => {
                     const id = `${joint}_${ex}`; const isChecked = window.selectedExercises.some(s => s.id === id) ? 'checked' : '';
@@ -208,9 +236,10 @@
                 });
                 c.appendChild(div);
             }
+            
+            // 관리자 영역은 이제 '저장'과 '추가' 버튼만 나타냄
             document.getElementById('admin-area').innerHTML = window.isAdminMode ? 
-                `<button class="admin-btn save" onclick="saveExerciseList()">💾 목록 전체 저장</button><button class="admin-btn" onclick="addCategory()">➕ 부위 추가</button><button class="admin-btn" onclick="toggleAdmin()">취소</button>` :
-                `<button class="admin-btn" onclick="toggleAdmin()">⚙️ 목록 수정(관리자)</button>`;
+                `<button class="admin-btn save" onclick="saveExerciseList()">💾 목록 전체 저장</button><button class="admin-btn" onclick="addCategory()" style="background:#28a745; color:white; border:none;">➕ 부위 추가</button>` : '';
         }
 
         window.renderPreview = function() {
@@ -224,17 +253,20 @@
             }
             window.selectedExercises.forEach((item, idx) => {
                 const id = item.id; const desc = window.exerciseDescriptions[id] || "방법을 입력하세요."; const imgSrc = window.exerciseImages[id] || "";
-                const imgHtml = imgSrc ? `<img src="${imgSrc}" class="exercise-img">` : `<div class="no-img-placeholder">사진을 등록해주세요</div>`;
+                const imgHtml = imgSrc ? `<img src="${imgSrc}" class="exercise-img">` : `<div class="no-img-placeholder">여기를 클릭하고 Ctrl+V로 붙여넣으세요</div>`;
                 
-                // 파일 업로드 버튼 HTML
-                const fileUploadHtml = window.isAdminMode ? `
+                // 사진 수정 버튼은 이제 상시 노출 (관리자 모드 안 켜도 됨!)
+                const fileUploadHtml = `
                     <div class="no-print" style="position: absolute; bottom: 10px; left: 10px;">
-                        <input type="file" id="file_${id}" accept="image/*" style="display:none" onchange="uploadLocalImage(this, '${id}')">
-                        <button class="img-edit-btn" onclick="document.getElementById('file_${id}').click()">📁 내 컴퓨터에서 사진 고르기</button>
-                    </div>` : '';
+                        <input type="file" id="file_${id}" accept="image/*" style="display:none" onchange="uploadLocalFile(this, '${id}')">
+                        <button class="img-edit-btn" onclick="document.getElementById('file_${id}').click()">📁 사진 변경</button>
+                    </div>`;
 
                 container.innerHTML += `<div class="a4-page"><div class="page-header"><h1>재활 운동 가이드</h1><div class="patient-info">환자: <b>${pName}</b>님 / 담당: <b>${tName}</b></div></div>
-                    <div class="page-content"><div class="img-wrap">${imgHtml}${fileUploadHtml}</div>
+                    <div class="page-content">
+                        <div class="img-wrap" tabindex="0" onpaste="handlePaste(event, '${id}')" title="이 영역을 클릭하고 Ctrl+V를 누르면 캡처한 이미지가 들어갑니다.">
+                            ${imgHtml}${fileUploadHtml}
+                        </div>
                     <div class="exercise-details"><h3>[${item.joint}] ${item.name}</h3><div contenteditable="true" id="desc_${id}" class="editable-desc">${desc}</div>
                     <button class="no-print save-btn" onclick="saveDescription('${id}', document.getElementById('desc_${id}').innerHTML)">💾 설명저장</button></div></div>
                     <div class="page-num-indicator">${idx + 1} / ${window.selectedExercises.length}</div></div>`;
@@ -244,13 +276,18 @@
     <style>
         body { font-family: 'Pretendard', sans-serif; margin: 0; display: flex; background: #515659; }
         #login-overlay { position: fixed; inset: 0; background: #515659; display: flex; justify-content: center; align-items: center; z-index: 9999; }
-        .login-box { background: white; padding: 40px; border-radius: 12px; text-align: center; width: 300px; }
+        .login-box { background: white; padding: 40px; border-radius: 12px; text-align: center; width: 300px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
         .login-box input { width: 100%; padding: 12px; margin: 15px 0; border: 1px solid #ccc; border-radius: 6px; text-align: center; }
         .login-box button { width: 100%; padding: 12px; background: #007bff; color: white; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; }
         
-        #sidebar { width: 300px; height: 100vh; background: #fff; padding: 20px; position: fixed; left: 0; top: 0; box-sizing: border-box; overflow-y: auto; z-index: 10; }
-        #preview-area { margin-left: 300px; padding: 20px; width: calc(100% - 300px); display: flex; flex-direction: column; align-items: center; }
+        #sidebar { width: 300px; height: 100vh; background: #fff; padding: 20px; position: fixed; left: 0; top: 0; box-sizing: border-box; overflow-y: auto; z-index: 10; box-shadow: 2px 0 10px rgba(0,0,0,0.2); }
+        #preview-area { margin-left: 300px; padding: 20px; width: calc(100% - 300px); display: flex; flex-direction: column; align-items: center; margin-top: 50px; }
         
+        /* 🌟 우측 상단 컨트롤 버튼 (목록수정 / 인쇄하기) 🌟 */
+        .top-right-controls { position: fixed; top: 20px; right: 25px; display: flex; gap: 10px; z-index: 1000; }
+        .admin-toggle-btn { padding: 10px 20px; background: #6c757d; color: #fff; border: none; border-radius: 20px; cursor: pointer; font-weight: bold; box-shadow: 0 4px 8px rgba(0,0,0,0.3); transition: 0.2s; }
+        .print-btn-fixed { padding: 10px 20px; background: #007bff; color: #fff; border: none; border-radius: 20px; cursor: pointer; font-weight: bold; box-shadow: 0 4px 8px rgba(0,0,0,0.3); }
+
         .user-profile { background: #f0f2f5; padding: 12px; border-radius: 8px; margin-bottom: 10px; font-size: 13px; display: flex; justify-content: space-between; align-items: center; }
         .logout-btn { background: #ff4d4f; color: white; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer; }
 
@@ -265,29 +302,34 @@
         .admin-btn { width: 100%; padding: 10px; margin-top: 5px; cursor: pointer; border-radius: 5px; border: 1px solid #ddd; font-size: 12px; }
         .admin-btn.save { background: #007bff; color: #fff; border: none; }
         
-        .a4-page { width: 297mm; height: 210mm; background: #fff; margin-bottom: 20px; padding: 15mm; box-sizing: border-box; display: flex; flex-direction: column; position: relative; }
+        .a4-page { width: 297mm; height: 210mm; background: #fff; margin-bottom: 20px; padding: 15mm; box-sizing: border-box; display: flex; flex-direction: column; position: relative; box-shadow: 0 5px 15px rgba(0,0,0,0.3); }
         .page-header { border-bottom: 3px solid #333; display: flex; justify-content: space-between; align-items: center; padding-bottom: 10px; margin-bottom: 10mm; }
         .page-header h1 { margin: 0; font-size: 28pt; }
         .page-content { flex: 1; display: flex; gap: 30px; overflow: hidden; }
-        .img-wrap { width: 65%; height: 100%; display: flex; align-items: center; justify-content: center; background: #fafafa; border-radius: 12px; position: relative; overflow: hidden; border: 1px solid #eee; }
+        
+        /* 🌟 복붙 가능 이미지 영역 🌟 */
+        .img-wrap { width: 65%; height: 100%; display: flex; align-items: center; justify-content: center; background: #fafafa; border-radius: 12px; position: relative; overflow: hidden; border: 2px dashed #ddd; cursor: pointer; transition: 0.2s; outline: none; }
+        .img-wrap:hover { border-color: #007bff; background: #f0f8ff; }
+        .img-wrap:focus { border: 3px solid #007bff; background: #e6f2ff; } /* 클릭 시 포커스 링 표시 */
+        
         .exercise-img { max-width: 100%; max-height: 100%; object-fit: contain; }
         .exercise-details { width: 35%; display: flex; flex-direction: column; }
         .exercise-details h3 { margin: 0 0 15px 0; font-size: 22pt; color: #0056b3; }
         .editable-desc { flex: 1; font-size: 12pt; line-height: 1.8; padding: 15px; background: #fdfdfd; border: 1px solid #eee; border-radius: 10px; overflow-y: auto; }
         .page-num-indicator { position: absolute; bottom: 10mm; right: 15mm; font-size: 10pt; color: #aaa; }
         
-        /* 사진 고르기 버튼 디자인 */
-        .img-edit-btn { background: #000; color: #fff; border: none; border-radius: 4px; font-size: 13px; cursor: pointer; padding: 8px 12px; font-weight: bold; box-shadow: 0 2px 5px rgba(0,0,0,0.3); }
-        .img-edit-btn:hover { background: #333; }
+        .img-edit-btn { background: #333; color: #fff; border: none; border-radius: 4px; font-size: 12px; cursor: pointer; padding: 6px 10px; font-weight: bold; }
+        .img-edit-btn:hover { background: #555; }
         
-        .print-btn-fixed { position: fixed; top: 20px; right: 20px; padding: 10px 20px; background: #007bff; color: #fff; border: none; border-radius: 20px; cursor: pointer; z-index: 100; font-weight: bold; }
-        .save-btn { margin-top: 10px; padding: 8px; background: #52c41a; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 12px; }
+        .save-btn { margin-top: 10px; padding: 8px; background: #52c41a; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 12px; font-weight: bold;}
 
         @media print {
             @page { size: A4 landscape; margin: 0; }
-            #sidebar, .print-btn-fixed, .no-print, #login-overlay { display: none !important; }
+            #sidebar, .top-right-controls, .no-print, #login-overlay { display: none !important; }
             #preview-area { margin: 0; padding: 0; width: 100%; }
-            .a4-page { width: 100vw; height: 100vh; margin: 0; page-break-after: always; }
+            .a4-page { width: 100vw; height: 100vh; margin: 0; page-break-after: always; box-shadow: none; }
+            .img-wrap { border: none !important; background: none !important; }
+            .editable-desc { background: none; border: none; padding: 0; }
         }
     </style>
 </head>
@@ -302,7 +344,10 @@
         </div>
     </div>
 
-    <button class="print-btn-fixed no-print" onclick="window.print()">🖨️ 인쇄하기</button>
+    <div class="top-right-controls no-print">
+        <button id="admin-toggle-btn" class="admin-toggle-btn" onclick="toggleAdmin()">⚙️ 목록 수정</button>
+        <button class="print-btn-fixed" onclick="window.print()">🖨️ 인쇄하기</button>
+    </div>
     
     <div id="sidebar">
         <div class="user-profile no-print">
