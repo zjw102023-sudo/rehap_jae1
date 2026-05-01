@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>재활 시스템 - 디자인 최적화 및 선택 초기화</title>
+    <title>재활 시스템 - 자율형 권한 개방</title>
     
     <style id="dynamic-print-style">
         @media print { @page { size: landscape; margin: 0; } }
@@ -26,7 +26,7 @@
 
         window.therapistDB = { "0000": "최고관리자" }; 
         window.exerciseData = {};
-        window.exerciseDescriptions = {};
+        window.exerciseDescriptions = {}; 
         window.exerciseImages = {}; 
         window.exerciseVideos = {}; 
         window.patientDB = {}; 
@@ -139,10 +139,15 @@
             if (!pName || !chartID) return alert("성함과 병록번호 필수!");
             if (window.selectedExercises.length === 0) return alert("운동 선택 필수!");
 
+            const routineData = window.selectedExercises.map(ex => {
+                const descBox = document.getElementById(`desc_${ex.id}`);
+                return { ...ex, customDesc: descBox ? descBox.innerHTML : "" };
+            });
+
             const saveKey = `${chartID}_${pName}_${Date.now()}`; 
             window.patientDB[saveKey] = {
                 chartID, pName, memo: pMemo,
-                exercises: window.selectedExercises,
+                exercises: routineData, 
                 therapistName: sessionStorage.getItem('loggedInName'),
                 therapistID: loggedInID,
                 date: new Date().toLocaleDateString() + " " + new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})
@@ -164,13 +169,163 @@
             document.getElementById('chartIn').value = chartID;
             document.getElementById('pMemo').value = ""; 
             window.selectedExercises = []; 
-            renderControls(); 
-            renderPreview();  
+            renderControls(); renderPreview();  
         };
 
-        window.deletePatientRoutine = async function(key) {
-            if (confirm("삭제?")) { delete window.patientDB[key]; await setDoc(doc(db, "settings", "patients"), window.patientDB); renderPatientList(); }
+        window.resetSelection = function() {
+            if (window.selectedExercises.length === 0) return;
+            if (confirm("체크된 모든 운동을 해제하시겠습니까?")) {
+                window.selectedExercises = [];
+                renderControls(); renderPreview();
+            }
         };
+
+        // 방안 B: 관리자 모드 토글 (모든 사용자가 접근 가능, 저장 시 목록 동기화)
+        window.toggleAdmin = async function() { 
+            if (window.isAdminMode) {
+                syncDOMtoData();
+                
+                let metaChanged = false;
+                let patientChanged = false;
+
+                for (let oldKey in window.keyMigrations) {
+                    let newKey = window.keyMigrations[oldKey];
+                    
+                    if (window.exerciseDescriptions[oldKey] !== undefined) {
+                        window.exerciseDescriptions[newKey] = window.exerciseDescriptions[oldKey];
+                        delete window.exerciseDescriptions[oldKey];
+                        metaChanged = true;
+                    }
+                    if (window.exerciseImages[oldKey] !== undefined) {
+                        window.exerciseImages[newKey] = window.exerciseImages[oldKey];
+                        delete window.exerciseImages[oldKey];
+                        metaChanged = true;
+                    }
+                    if (window.exerciseVideos[oldKey] !== undefined) {
+                        window.exerciseVideos[newKey] = window.exerciseVideos[oldKey];
+                        delete window.exerciseVideos[oldKey];
+                        metaChanged = true;
+                    }
+                }
+
+                for (let pKey in window.patientDB) {
+                    let pExChanged = false;
+                    window.patientDB[pKey].exercises = window.patientDB[pKey].exercises.map(ex => {
+                        if (window.keyMigrations[ex.id]) {
+                            const newKey = window.keyMigrations[ex.id];
+                            const parts = newKey.split('_');
+                            pExChanged = true;
+                            return { joint: parts[0], name: parts[1], id: newKey };
+                        }
+                        return ex;
+                    });
+                    if (pExChanged) patientChanged = true;
+                }
+
+                await setDoc(doc(db, "settings", "exerciseList"), window.exerciseData);
+                if(metaChanged) {
+                    await setDoc(doc(db, "settings", "exerciseDescriptions"), window.exerciseDescriptions);
+                    await setDoc(doc(db, "settings", "exerciseImages"), window.exerciseImages);
+                    await setDoc(doc(db, "settings", "exerciseVideos"), window.exerciseVideos);
+                }
+                if (patientChanged) {
+                    await setDoc(doc(db, "settings", "patients"), window.patientDB);
+                }
+                
+                window.isAdminMode = false;
+                renderControls(); 
+                renderPatientList();
+                renderPreview(); 
+
+                const btn = document.getElementById('admin-toggle-btn');
+                btn.innerText = "⚙️ 목록 수정";
+                btn.style.background = "#6c757d";
+
+            } else {
+                document.getElementById('searchEx').value = ""; 
+                window.isAdminMode = true; 
+                renderControls(); 
+                const btn = document.getElementById('admin-toggle-btn');
+                btn.innerText = "💾 수정 완료 (자동저장)";
+                btn.style.background = "#dc3545";
+            }
+        };
+
+        // 🌟 방안 B: 권한 제한 삭제, 모든 치료사가 원본 저장 가능 🌟
+        window.saveMasterDescription = async function(id, text) {
+            await setDoc(doc(db, "settings", "exerciseDescriptions"), { [id]: text }, { merge: true });
+            window.exerciseDescriptions[id] = text;
+            alert("공용 데이터(원본)가 업데이트되었습니다.");
+        };
+
+        window.addCategory = function() { syncDOMtoData(); const n = prompt("부위명:"); if(n && !window.exerciseData[n]) { window.exerciseData[n] = {"스트레칭": [], "운동": []}; renderControls(); } }
+        window.deleteCategory = function(btn) { syncDOMtoData(); const catTitle = btn.closest('.category-box').querySelector('.category-title-text').innerText.trim(); if(confirm(`[${catTitle}] 삭제?`)) { delete window.exerciseData[catTitle]; removeDeletedFromSelection(); renderControls(); renderPreview(); } }
+        window.addFolder = function(btn) { syncDOMtoData(); const catTitle = btn.closest('.category-box').querySelector('.category-title-text').innerText.trim(); const f = prompt(`새 폴더명:`); if (f && !window.exerciseData[catTitle][f]) { window.exerciseData[catTitle][f] = []; renderControls(); } }
+        window.deleteFolder = function(btn) { syncDOMtoData(); const catTitle = btn.closest('.category-box').querySelector('.category-title-text').innerText.trim(); const fTitle = btn.closest('.folder-box').querySelector('.folder-title-text').innerText.trim(); if(confirm(`삭제?`)) { delete window.exerciseData[catTitle][fTitle]; removeDeletedFromSelection(); renderControls(); renderPreview(); } }
+        window.addExercise = function(btn) { syncDOMtoData(); const catTitle = btn.closest('.category-box').querySelector('.category-title-text').innerText.trim(); const fTitle = btn.closest('.folder-box').querySelector('.folder-title-text').innerText.trim(); const n = prompt(`운동명:`); if(n) { window.exerciseData[catTitle][fTitle].push(n); renderControls(); } }
+        
+        function removeDeletedFromSelection() {
+            window.selectedExercises = window.selectedExercises.filter(ex => {
+                if(window.exerciseData[ex.joint]) {
+                    for(let folder in window.exerciseData[ex.joint]) {
+                        if(window.exerciseData[ex.joint][folder].includes(ex.name)) return true;
+                    }
+                }
+                return false;
+            });
+        }
+
+        window.deleteExercise = function(btn, exName) { 
+            syncDOMtoData(); 
+            const catTitle = btn.closest('.category-box').querySelector('.category-title-text').innerText.trim(); 
+            const fTitle = btn.closest('.folder-box').querySelector('.folder-title-text').innerText.trim(); 
+            window.exerciseData[catTitle][fTitle] = window.exerciseData[catTitle][fTitle].filter(e => e !== exName); 
+            removeDeletedFromSelection();
+            renderControls(); 
+            renderPreview(); 
+        }
+
+        window.handleCheck = function(c) {
+            const j = c.getAttribute('data-joint'), n = c.getAttribute('data-name'), id = `${j}_${n}`;
+            if (c.checked) {
+                const masterDesc = window.exerciseDescriptions[id] || "방법을 입력하세요.";
+                window.selectedExercises.push({ joint:j, name:n, id:id, customDesc: masterDesc });
+            } else {
+                window.selectedExercises = window.selectedExercises.filter(ex => ex.id !== id);
+            }
+            renderPreview();
+        }
+
+        window.removeExerciseFromPreview = function(id) {
+            window.selectedExercises = window.selectedExercises.filter(ex => ex.id !== id);
+            renderControls(); renderPreview();  
+        };
+
+        window.setVideoLink = async function(id) { const currentUrl = window.exerciseVideos[id] || ""; const url = prompt("유튜브(영상) 주소:", currentUrl); if (url !== null) { try { await setDoc(doc(db, "settings", "exerciseVideos"), { [id]: url }, { merge: true }); window.exerciseVideos[id] = url; renderPreview(); } catch(e) { alert("저장 실패!"); } } };
+        window.addMacro = function(id, text) {
+            const descBox = document.getElementById(`desc_${id}`);
+            descBox.innerHTML += (descBox.innerHTML.trim() === '' ? '' : '<br>') + `▶ ${text}`;
+        };
+
+        window.processAndSaveImage = function(file, id) {
+            const reader = new FileReader(); reader.readAsDataURL(file);
+            reader.onload = function(event) {
+                const img = new Image(); img.src = event.target.result;
+                img.onload = async function() {
+                    const canvas = document.createElement('canvas');
+                    let w = img.width, h = img.height; const MAX = 600; 
+                    if (w > h) { if (w > MAX) { h *= MAX / w; w = MAX; } } else { if (h > MAX) { w *= MAX / h; h = MAX; } }
+                    canvas.width = w; canvas.height = h;
+                    canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+                    const base64 = canvas.toDataURL('image/jpeg', 0.7); 
+                    let imgs = window.exerciseImages[id] || []; if (typeof imgs === 'string') imgs = [imgs];
+                    imgs.push(base64);
+                    try { await setDoc(doc(db, "settings", "exerciseImages"), { [id]: imgs }, { merge: true }); window.exerciseImages[id] = imgs; renderPreview(); } catch (e) { alert("용량 초과"); }
+                }
+            };
+        }
+        window.clearImages = async function(id) { if (confirm("전체 삭제?")) { await setDoc(doc(db, "settings", "exerciseImages"), { [id]: [] }, { merge: true }); window.exerciseImages[id] = []; renderPreview(); } }
+        window.handlePaste = function(e, id) { const items = (e.clipboardData || e.originalEvent.clipboardData).items; for (let i in items) { if (items[i].kind === 'file' && items[i].type.startsWith('image/')) { processAndSaveImage(items[i].getAsFile(), id); break; } } }
 
         function renderPatientList() {
             const pListDiv = document.getElementById('patient-list-container'); pListDiv.innerHTML = "";
@@ -188,7 +343,6 @@
                 const chartID = sortedRecords[0].chartID;
                 const groupDiv = document.createElement('div');
                 groupDiv.className = 'patient-group';
-                
                 groupDiv.innerHTML = `
                     <div class="patient-group-title">
                         <div onclick="this.parentElement.nextElementSibling.classList.toggle('active')" style="flex:1; cursor:pointer;">
@@ -272,167 +426,18 @@
             window.exerciseData = newData;
         }
 
-        window.toggleAdmin = async function() { 
-            if (window.isAdminMode) {
-                syncDOMtoData();
-                
-                let metaChanged = false;
-                let patientChanged = false;
-
-                for (let oldKey in window.keyMigrations) {
-                    let newKey = window.keyMigrations[oldKey];
-                    
-                    if (window.exerciseDescriptions[oldKey] !== undefined) {
-                        window.exerciseDescriptions[newKey] = window.exerciseDescriptions[oldKey];
-                        delete window.exerciseDescriptions[oldKey];
-                        metaChanged = true;
-                    }
-                    if (window.exerciseImages[oldKey] !== undefined) {
-                        window.exerciseImages[newKey] = window.exerciseImages[oldKey];
-                        delete window.exerciseImages[oldKey];
-                        metaChanged = true;
-                    }
-                    if (window.exerciseVideos[oldKey] !== undefined) {
-                        window.exerciseVideos[newKey] = window.exerciseVideos[oldKey];
-                        delete window.exerciseVideos[oldKey];
-                        metaChanged = true;
-                    }
-                }
-
-                for (let pKey in window.patientDB) {
-                    let pExChanged = false;
-                    window.patientDB[pKey].exercises = window.patientDB[pKey].exercises.map(ex => {
-                        if (window.keyMigrations[ex.id]) {
-                            const newKey = window.keyMigrations[ex.id];
-                            const parts = newKey.split('_');
-                            pExChanged = true;
-                            return { joint: parts[0], name: parts[1], id: newKey };
-                        }
-                        return ex;
-                    });
-                    if (pExChanged) patientChanged = true;
-                }
-
-                await setDoc(doc(db, "settings", "exerciseList"), window.exerciseData);
-                if(metaChanged) {
-                    await setDoc(doc(db, "settings", "exerciseDescriptions"), window.exerciseDescriptions);
-                    await setDoc(doc(db, "settings", "exerciseImages"), window.exerciseImages);
-                    await setDoc(doc(db, "settings", "exerciseVideos"), window.exerciseVideos);
-                }
-                if (patientChanged) {
-                    await setDoc(doc(db, "settings", "patients"), window.patientDB);
-                }
-                
-                window.isAdminMode = false;
-                
-                renderControls(); 
-                renderPatientList();
-                renderPreview(); 
-
-                const btn = document.getElementById('admin-toggle-btn');
-                btn.innerText = "⚙️ 목록 수정";
-                btn.style.background = "#6c757d";
-
-            } else {
-                document.getElementById('searchEx').value = ""; 
-                window.isAdminMode = true; 
-                renderControls(); 
-                const btn = document.getElementById('admin-toggle-btn');
-                btn.innerText = "💾 수정 완료 (자동저장)";
-                btn.style.background = "#dc3545";
-            }
-        };
-
-        // 🌟 새 기능: 전체 선택 초기화 버튼 로직 🌟
-        window.resetSelection = function() {
-            if(window.selectedExercises.length === 0) return;
-            if (confirm("선택된 운동을 모두 초기화하시겠습니까?")) {
-                window.selectedExercises = [];
-                renderControls();
-                renderPreview();
-            }
-        };
-
-        window.addCategory = function() { syncDOMtoData(); const n = prompt("부위명:"); if(n && !window.exerciseData[n]) { window.exerciseData[n] = {"스트레칭": [], "운동": []}; renderControls(); } }
-        window.deleteCategory = function(btn) { syncDOMtoData(); const catTitle = btn.closest('.category-box').querySelector('.category-title-text').innerText.trim(); if(confirm(`[${catTitle}] 삭제?`)) { delete window.exerciseData[catTitle]; removeDeletedFromSelection(); renderControls(); renderPreview(); } }
-        window.addFolder = function(btn) { syncDOMtoData(); const catTitle = btn.closest('.category-box').querySelector('.category-title-text').innerText.trim(); const f = prompt(`새 폴더명:`); if (f && !window.exerciseData[catTitle][f]) { window.exerciseData[catTitle][f] = []; renderControls(); } }
-        window.deleteFolder = function(btn) { syncDOMtoData(); const catTitle = btn.closest('.category-box').querySelector('.category-title-text').innerText.trim(); const fTitle = btn.closest('.folder-box').querySelector('.folder-title-text').innerText.trim(); if(confirm(`삭제?`)) { delete window.exerciseData[catTitle][fTitle]; removeDeletedFromSelection(); renderControls(); renderPreview(); } }
-        window.addExercise = function(btn) { syncDOMtoData(); const catTitle = btn.closest('.category-box').querySelector('.category-title-text').innerText.trim(); const fTitle = btn.closest('.folder-box').querySelector('.folder-title-text').innerText.trim(); const n = prompt(`운동명:`); if(n) { window.exerciseData[catTitle][fTitle].push(n); renderControls(); } }
-        
-        function removeDeletedFromSelection() {
-            window.selectedExercises = window.selectedExercises.filter(ex => {
-                if(window.exerciseData[ex.joint]) {
-                    for(let folder in window.exerciseData[ex.joint]) {
-                        if(window.exerciseData[ex.joint][folder].includes(ex.name)) return true;
-                    }
-                }
-                return false;
-            });
-        }
-
-        window.deleteExercise = function(btn, exName) { 
-            syncDOMtoData(); 
-            const catTitle = btn.closest('.category-box').querySelector('.category-title-text').innerText.trim(); 
-            const fTitle = btn.closest('.folder-box').querySelector('.folder-title-text').innerText.trim(); 
-            window.exerciseData[catTitle][fTitle] = window.exerciseData[catTitle][fTitle].filter(e => e !== exName); 
-            removeDeletedFromSelection();
-            renderControls(); 
-            renderPreview(); 
-        }
-        
-        window.handleCheck = function(c) {
-            const j = c.getAttribute('data-joint'), n = c.getAttribute('data-name'), id = `${j}_${n}`;
-            if (c.checked) window.selectedExercises.push({ joint:j, name:n, id:id }); else window.selectedExercises = window.selectedExercises.filter(ex => ex.id !== id);
-            renderPreview();
-        }
-
-        window.removeExerciseFromPreview = function(id) {
-            window.selectedExercises = window.selectedExercises.filter(ex => ex.id !== id);
-            renderControls(); 
-            renderPreview();  
-        };
-
-        window.saveDescription = async function(id, text) { await setDoc(doc(db, "settings", "exerciseDescriptions"), { [id]: text }, { merge: true }); }
-        window.setVideoLink = async function(id) { const currentUrl = window.exerciseVideos[id] || ""; const url = prompt("유튜브(영상) 주소:", currentUrl); if (url !== null) { try { await setDoc(doc(db, "settings", "exerciseVideos"), { [id]: url }, { merge: true }); window.exerciseVideos[id] = url; renderPreview(); } catch(e) { alert("저장 실패!"); } } };
-        window.addMacro = function(id, text) { const descBox = document.getElementById(`desc_${id}`); descBox.innerHTML += (descBox.innerHTML.trim() === '' ? '' : '<br>') + `▶ ${text}`; saveDescription(id, descBox.innerHTML); };
-
-        window.processAndSaveImage = function(file, id) {
-            const reader = new FileReader(); reader.readAsDataURL(file);
-            reader.onload = function(event) {
-                const img = new Image(); img.src = event.target.result;
-                img.onload = async function() {
-                    const canvas = document.createElement('canvas');
-                    let w = img.width, h = img.height; const MAX = 600; 
-                    if (w > h) { if (w > MAX) { h *= MAX / w; w = MAX; } } else { if (h > MAX) { w *= MAX / h; h = MAX; } }
-                    canvas.width = w; canvas.height = h;
-                    canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-                    const base64 = canvas.toDataURL('image/jpeg', 0.7); 
-                    let imgs = window.exerciseImages[id] || []; if (typeof imgs === 'string') imgs = [imgs];
-                    imgs.push(base64);
-                    try { await setDoc(doc(db, "settings", "exerciseImages"), { [id]: imgs }, { merge: true }); window.exerciseImages[id] = imgs; renderPreview(); } catch (e) { alert("용량 초과"); }
-                }
-            };
-        }
-        window.clearImages = async function(id) { if (confirm("전체 삭제?")) { await setDoc(doc(db, "settings", "exerciseImages"), { [id]: [] }, { merge: true }); window.exerciseImages[id] = []; renderPreview(); } }
-        window.handlePaste = function(e, id) { const items = (e.clipboardData || e.originalEvent.clipboardData).items; for (let i in items) { if (items[i].kind === 'file' && items[i].type.startsWith('image/')) { processAndSaveImage(items[i].getAsFile(), id); break; } } }
-
         function renderControls() {
             const c = document.getElementById('controls'); c.innerHTML = "";
             const fixedOrder = ["목", "어깨", "팔꿈치", "손목", "허리", "고관절", "무릎", "발목"];
             const currentCategories = Object.keys(window.exerciseData).sort((a, b) => {
-                const iA = fixedOrder.indexOf(a);
-                const iB = fixedOrder.indexOf(b);
+                const iA = fixedOrder.indexOf(a); const iB = fixedOrder.indexOf(b);
                 if (iA !== -1 && iB !== -1) return iA - iB; 
-                if (iA !== -1) return -1; 
-                if (iB !== -1) return 1;  
-                return a.localeCompare(b); 
+                if (iA !== -1) return -1; if (iB !== -1) return 1; return a.localeCompare(b); 
             });
-
             for (const joint of currentCategories) {
-                const folders = window.exerciseData[joint];
                 const div = document.createElement('div'); div.className = 'category-box';
                 div.innerHTML = `<div class="category-title"><span class="category-title-text" contenteditable="${window.isAdminMode}" data-old-key="${joint}" style="${window.isAdminMode ? 'background:#fff; border:1px dashed #aaa; padding:0 4px; border-radius:4px;' : ''}">${joint}</span>${window.isAdminMode ? `<div><button onclick="addFolder(this)">📁+</button> <button onclick="deleteCategory(this)">🗑️</button></div>` : ''}</div>`;
-                for (const [folder, exercises] of Object.entries(folders)) {
+                for (const [folder, exercises] of Object.entries(window.exerciseData[joint])) {
                     const fDiv = document.createElement('div'); fDiv.className = 'folder-box'; fDiv.setAttribute('data-old-folder-key', folder);
                     fDiv.innerHTML = `<div class="folder-title"><span>📂 <span class="folder-title-text" contenteditable="${window.isAdminMode}" style="${window.isAdminMode ? 'background:#fff; border:1px dashed #aaa; padding:0 4px; border-radius:4px;' : ''}">${folder}</span></span>${window.isAdminMode ? `<div><button onclick="addExercise(this)">+</button> <button onclick="deleteFolder(this)">🗑️</button></div>` : ''}</div>`;
                     
@@ -469,17 +474,16 @@
             const pName = document.getElementById('pIn').value || "________";
             const tName = sessionStorage.getItem('loggedInName') || "________";
             container.innerHTML = "";
-            if (window.selectedExercises.length === 0) { container.innerHTML = `<div class="a4-page"><p style="color:#ccc; text-align:center; margin-top:100px;">운동을 선택하세요.</p></div>`; return; }
+            if (window.selectedExercises.length === 0) { container.innerHTML = `<div class="a4-page"><p style="color:#ccc; text-align:center; margin-top:50px;">운동을 선택하세요.</p></div>`; return; }
             
             window.selectedExercises.forEach((item, idx) => {
-                const id = item.id; const desc = window.exerciseDescriptions[id] || "방법을 입력하세요."; 
+                const id = item.id; 
+                const descText = item.customDesc || window.exerciseDescriptions[id] || "방법을 입력하세요.";
                 let imgs = window.exerciseImages[id] || []; if (typeof imgs === 'string') imgs = [imgs];
                 let imgHtml = imgs.length === 0 ? `<div class="no-img-placeholder">Ctrl+V로 사진 추가</div>` : `<div class="vertical-img-container">${imgs.map((src, i) => `<div class="split-img-item"><img src="${src}"><div class="img-idx-badge">${i+1}</div></div>`).join('')}</div>`;
                 
                 const vidUrl = window.exerciseVideos[id];
-                const qrHtml = vidUrl 
-                    ? `<div class="qr-box"><img src="https://api.qrserver.com/v1/create-qr-code/?size=70x70&data=${encodeURIComponent(vidUrl)}" class="qr-img"><div style="font-size:10px; text-align:center; margin-top:3px; color:#555; font-weight:bold;">영상 보기</div></div>`
-                    : `<div class="qr-placeholder no-print">영상 없음</div>`;
+                const qrHtml = vidUrl ? `<div class="qr-box"><img src="https://api.qrserver.com/v1/create-qr-code/?size=70x70&data=${encodeURIComponent(vidUrl)}" class="qr-img"><div style="font-size:10px;text-align:center;margin-top:3px;font-weight:bold;">영상</div></div>` : "";
 
                 const fileUploadHtml = `
                     <div class="no-print" style="position: absolute; bottom: 10px; left: 10px; display:flex; gap:8px;">
@@ -489,22 +493,20 @@
                         <input type="file" id="f_${id}" accept="image/*" style="display:none" onchange="uploadLocalFile(this, '${id}')">
                     </div>`;
                 
-                // 🌟 매크로 수정: 꼬리말에 있던 통증 문구를 매크로 버튼으로 추가 🌟
                 const macroHtml = `
                     <div class="macro-btns no-print">
                         <button onclick="addMacro('${id}', '10회 x 3세트 진행합니다.')">10회 3세트</button>
                         <button onclick="addMacro('${id}', '15회 x 3세트 진행합니다.')">15회 3세트</button>
-                        <button onclick="addMacro('${id}', '10초 유지 x 5회 진행합니다.')">10초 유지</button>
-                        <button onclick="addMacro('${id}', '🚨 주의: 운동 중 찌릿하거나 날카로운 통증이 발생하면 즉시 중단하고 치료사에게 문의하세요.')" style="color:#d32f2f;">🚨 통증 주의 멘트</button>
+                        <button onclick="addMacro('${id}', '🚨 주의: 통증 발생 시 즉시 중단하세요.')" style="color:#d32f2f;">🚨 통증 주의</button>
                     </div>`;
 
                 container.innerHTML += `
                 <div class="a4-page">
-                    <div class="page-header" style="position:relative;">
+                    <div class="page-header">
                         <h1>재활 운동 가이드</h1>
-                        <div style="display:flex; align-items:center; gap:15px;">
-                            <div class="patient-info">환자: <b>${pName}</b>님 / 담당치료사: <b>${tName}</b></div>
-                            <button class="no-print page-delete-btn" onclick="removeExerciseFromPreview('${id}')" title="이 페이지만 지우기">🗑️</button>
+                        <div style="display:flex; align-items:center; gap:10px;">
+                            <div class="patient-info">환자: <b>${pName}</b> / 담당: <b>${tName}</b></div>
+                            <button class="no-print page-delete-btn" onclick="removeExerciseFromPreview('${id}')" title="삭제">🗑️</button>
                         </div>
                     </div>
                     <div class="page-content">
@@ -512,59 +514,48 @@
                         <div class="exercise-details">
                             <div class="exercise-title-row">
                                 <h3>[${item.joint}] ${item.name}</h3>
-                                <button class="no-print save-btn" onclick="saveDescription('${id}', document.getElementById('desc_${id}').innerHTML)">💾 저장</button>
+                                <button class="no-print save-btn" onclick="saveMasterDescription('${id}', document.getElementById('desc_${id}').innerHTML)" title="이 운동의 기본 설명을 영구적으로 덮어씁니다">💾 원본저장</button>
                             </div>
                             ${macroHtml}
-                            <div contenteditable="true" id="desc_${id}" class="editable-desc">${desc}</div>
+                            <div contenteditable="true" id="desc_${id}" class="editable-desc">${descText}</div>
                             ${qrHtml}
                         </div>
                     </div>
-                    <div class="page-footer" style="justify-content: flex-end;">
-                        <div class="page-num-indicator">${idx + 1} / ${window.selectedExercises.length}</div>
-                    </div>
+                    <div class="page-footer"><div class="page-num-indicator">${idx + 1} / ${window.selectedExercises.length}</div></div>
                 </div>`;
             });
         }
     </script>
     <style>
-        body { font-family: 'Pretendard', sans-serif; margin: 0; display: flex; background: #515659; overflow-x: hidden; }
+        body { font-family: 'Pretendard', sans-serif; margin: 0; display: flex; background: #515659; }
         #login-overlay { position: fixed; inset: 0; background: #515659; display: flex; justify-content: center; align-items: center; z-index: 9999; }
-        .login-box { background: white; padding: 40px; border-radius: 12px; text-align: center; width: 300px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+        .login-box { background: white; padding: 40px; border-radius: 12px; text-align: center; width: 300px; }
         .login-box input { width: 100%; padding: 12px; margin: 15px 0; border: 1px solid #ccc; border-radius: 6px; text-align: center; }
         .login-box button { width: 100%; padding: 12px; background: #007bff; color: white; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; }
         
-        #sidebar { width: 280px; height: 100vh; background: #fff; padding: 20px; position: fixed; left: 0; top: 0; box-sizing: border-box; overflow-y: auto; z-index: 10; border-right: 1px solid #eee; }
-        #preview-area { margin-left: 280px; width: calc(100% - 620px); display: flex; flex-direction: column; align-items: center; padding-top: 80px; overflow-y: auto; }
-        #page-container { transform: scale(0.8); transform-origin: top center; margin-bottom: -15%; }
-        #patient-panel { width: 340px; height: 100vh; background: #f4f6f8; padding: 20px; position: fixed; right: 0; top: 0; box-sizing: border-box; overflow-y: auto; z-index: 9; border-left: 2px solid #ddd; box-shadow: -5px 0 15px rgba(0,0,0,0.1); }
+        #sidebar { width: 280px; height: 100vh; background: #fff; padding: 20px; position: fixed; left: 0; top: 0; overflow-y: auto; border-right: 1px solid #eee; box-sizing: border-box; }
+        #preview-area { margin-left: 280px; width: calc(100% - 620px); display: flex; flex-direction: column; align-items: center; padding-top: 20px; }
+        #patient-panel { width: 340px; height: 100vh; background: #f4f6f8; padding: 20px; position: fixed; right: 0; top: 0; border-left: 2px solid #ddd; box-sizing: border-box; overflow-y: auto; }
         
         .top-right-controls { position: fixed; top: 20px; right: 365px; display: flex; gap: 8px; z-index: 1000; }
-        .mode-btn { padding: 10px 15px; background: #fff; border: 1px solid #ccc; border-radius: 20px; cursor: pointer; font-weight: bold; font-size: 13px; box-shadow: 0 4px 8px rgba(0,0,0,0.2); transition:0.2s;}
+        .mode-btn { padding: 10px 15px; background: #fff; border: 1px solid #ccc; border-radius: 20px; cursor: pointer; font-weight: bold; font-size: 13px; box-shadow: 0 4px 8px rgba(0,0,0,0.2); }
         .mode-btn.active { background: #17a2b8; color: white; border-color: #17a2b8; }
         
-        /* 🌟 수정 및 초기화 버튼 나란히 배치 🌟 */
-        .admin-toggle-btn { padding: 10px 12px; background: #6c757d; color: #fff; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; font-size: 13px; transition: 0.2s; box-shadow: 0 2px 4px rgba(0,0,0,0.2); }
-        
+        .admin-toggle-btn { padding: 10px 12px; background: #6c757d; color: #fff; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; font-size: 13px; box-shadow: 0 2px 4px rgba(0,0,0,0.2); }
         .print-btn-fixed { padding: 10px 20px; background: #007bff; color: #fff; border: none; border-radius: 20px; cursor: pointer; font-weight: bold; }
-
         .user-profile { background: #e9ecef; padding: 12px; border-radius: 8px; margin-bottom: 10px; font-size: 13px; display: flex; justify-content: space-between; align-items: center; }
         .logout-btn { background: #ff4d4f; color: white; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer; }
         #super-admin-panel { background: #fffbe6; border: 1px solid #ffe58f; padding: 15px; border-radius: 8px; margin-bottom: 20px; display: none; }
-
         .search-box { width: 100%; padding: 10px; margin-bottom:10px; border: 2px solid #17a2b8; border-radius: 6px; box-sizing: border-box; font-weight: bold; }
-
         .category-box { background: #f0f4f8; padding: 10px; margin-bottom: 10px; border-radius: 8px; }
         .category-title { font-weight: bold; color: #0056b3; display: flex; justify-content: space-between; margin-bottom: 5px; }
         .folder-box { margin-left: 8px; border-left: 2px solid #ccc; padding-left: 10px; margin-top: 8px; }
         .folder-title { font-size: 13px; font-weight: bold; display: flex; justify-content: space-between; margin-bottom: 5px; color:#555; }
         .exercise-item { font-size: 13px; margin-bottom: 4px; }
-        
         .patient-group { margin-bottom: 10px; background: white; border-radius: 8px; border: 1px solid #e1e4e8; overflow: hidden; }
-        .patient-group-title { display: flex; justify-content: space-between; align-items: center; padding: 12px; background: #fff; border-bottom: 1px solid #eee; transition: 0.2s; }
+        .patient-group-title { display: flex; justify-content: space-between; align-items: center; padding: 12px; background: #fff; border-bottom: 1px solid #eee; cursor: pointer; }
         .patient-group-title:hover { background: #f0f7ff; }
-        .new-routine-btn { background: #007bff; color: white; border: none; padding: 5px 10px; border-radius: 4px; font-size: 11px; cursor: pointer; font-weight: bold; margin-left: 10px; box-shadow:0 1px 3px rgba(0,0,0,0.2);}
-        .new-routine-btn:hover { background: #0056b3; }
-        
+        .new-routine-btn { background: #007bff; color: white; border: none; padding: 5px 10px; border-radius: 4px; font-size: 11px; cursor: pointer; font-weight: bold; margin-left: 10px; }
         .patient-group-content { display: none; padding: 0 10px 10px 10px; background: #fafafa; }
         .patient-group-content.active { display: block; }
         .visit-record { padding: 10px; border-top: 1px solid #eee; }
@@ -572,51 +563,32 @@
         .p-card-actions { display: flex; gap: 5px; }
         .p-btn-load { flex: 2; padding: 6px; font-size: 11px; cursor: pointer; background:#eee; border:1px solid #ccc; border-radius:4px; font-weight:bold;}
         .p-btn-del { flex: 1; padding: 6px; font-size: 11px; color: #ff4d4f; border: 1px solid #ff4d4f; background: #fff; cursor: pointer; border-radius:4px;}
-
         .secret-memo { width: 100%; height: 90px; resize: none; padding: 10px; box-sizing: border-box; border: 1px dashed #ff9800; border-radius: 6px; margin-bottom: 15px; background: #fffde7; font-size: 12px; font-family: inherit;}
 
-        /* 🌟 상단 여백 최적화 (padding 줄임) 🌟 */
-        .a4-page { background: #fff; margin-bottom: 20px; padding: 10mm 15mm 15mm 15mm; box-sizing: border-box; display: flex; flex-direction: column; position: relative; box-shadow: 0 5px 15px rgba(0,0,0,0.3); overflow: hidden; }
-        
-        /* 🌟 제목 아래 여백 줄임 🌟 */
-        .page-header { border-bottom: 3px solid #333; display: flex; justify-content: space-between; align-items: center; padding-bottom: 5px; margin-bottom: 4mm; }
-        .page-header h1 { margin: 0; font-size: 26pt; }
-        
+        .a4-page { background: #fff; margin-bottom: 20px; padding: 5mm 10mm 10mm 10mm; box-sizing: border-box; display: flex; flex-direction: column; position: relative; box-shadow: 0 5px 15px rgba(0,0,0,0.3); width: 297mm; height: 210mm; }
+        .page-header { border-bottom: 2px solid #333; display: flex; justify-content: space-between; align-items: center; padding-bottom: 3px; margin-bottom: 3mm; }
+        .page-header h1 { margin: 0; font-size: 22pt; letter-spacing: -1px; }
+        .patient-info { font-size: 12pt; }
         .page-delete-btn { background: #ff4d4f; color: white; border: none; border-radius: 4px; width: 28px; height: 28px; font-size: 14px; cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 4px rgba(0,0,0,0.2); transition: 0.2s; }
-        .page-delete-btn:hover { background: #d9363e; }
-
-        .page-content { flex: 1; display: flex; overflow: hidden; margin-bottom: 5mm;}
-        .img-wrap { display: flex; align-items: center; justify-content: center; background: #fafafa; border-radius: 12px; position: relative; overflow: hidden; border: 2px dashed #ddd; outline: none; transition: 0.2s; }
+        .page-content { flex: 1; display: flex; gap: 15px; overflow: hidden; margin-bottom: 5mm;}
+        .img-wrap { flex: 65; border: 1px solid #eee; border-radius: 8px; overflow: hidden; display: flex; align-items: center; justify-content: center; background: #fafafa; position: relative; outline: none; }
         .vertical-img-container { display: flex; flex-direction: column; width: 100%; height: 100%; }
         .split-img-item { flex: 1; position: relative; width: 100%; height: 50%; overflow: hidden; border-bottom: 1px solid #ddd; }
         .split-img-item img { width: 100%; height: 100%; object-fit: cover; }
         .img-idx-badge { position: absolute; bottom: 8px; right: 8px; background: rgba(0,0,0,0.6); color: #fff; padding: 2px 8px; border-radius: 10px; font-size: 12px; font-weight: bold; }
-
-        .exercise-details { display: flex; flex-direction: column; position: relative; }
-        .exercise-title-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; gap: 10px; }
+        .exercise-details { flex: 35; display: flex; flex-direction: column; gap: 8px; position: relative; }
+        .exercise-title-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
         .exercise-title-row h3 { margin: 0; font-size: 20pt; color: #0056b3; line-height: 1.2; flex: 1; word-break: keep-all; }
         .save-btn { padding: 5px 12px; background: #52c41a; color: white; border: none; border-radius: 4px; font-size: 12px; font-weight: bold; cursor: pointer; white-space: nowrap; box-shadow: 0 2px 4px rgba(0,0,0,0.2); }
-        
-        .macro-btns { display: flex; gap: 5px; margin-bottom: 10px; flex-wrap: wrap; }
-        .macro-btns button { padding: 4px 8px; font-size: 11px; background: #f0f0f0; border: 1px solid #ccc; border-radius: 4px; cursor: pointer; font-weight: bold; color: #333; }
-        .macro-btns button:hover { background: #e0e0e0; }
-
-        .editable-desc { flex: 1; font-size: 12pt; line-height: 1.7; padding: 12px; background: #fdfdfd; border: 1px solid #eee; border-radius: 10px; overflow-y: auto; min-height: 0; }
-        
-        .qr-placeholder { position: absolute; bottom: 10px; right: 10px; font-size: 10px; color: #ccc; border: 1px dashed #ccc; padding: 5px; text-align: center; width: 60px; height: 60px; display: flex; align-items: center; justify-content: center;}
+        .macro-btns { display: flex; gap: 4px; flex-wrap: wrap; }
+        .macro-btns button { padding: 3px 6px; font-size: 10px; background: #f8f8f8; border: 1px solid #ddd; border-radius: 4px; cursor: pointer; font-weight: bold; color: #333; }
+        .editable-desc { flex: 1; font-size: 11pt; line-height: 1.6; border: 1px solid #f0f0f0; padding: 10px; border-radius: 6px; overflow-y: auto; background: #fdfdfd; min-height: 0; }
         .qr-box { position: absolute; bottom: 10px; right: 10px; background: #fff; padding: 5px; border-radius: 8px; border: 1px solid #eee; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
         .qr-img { width: 70px; height: 70px; display: block; }
-        
-        .page-footer { margin-top: auto; border-top: 2px solid #333; padding-top: 8px; display: flex; align-items: center; }
+        .page-footer { margin-top: auto; border-top: 2px solid #333; padding-top: 8px; display: flex; justify-content: flex-end; align-items: center; }
         .page-num-indicator { font-size: 10pt; color: #888; font-weight: bold; }
-
         .img-edit-btn { background: #333; color: #fff; border: none; border-radius: 4px; font-size: 11px; padding: 6px 10px; cursor: pointer; font-weight:bold; }
-
         .landscape-mode .a4-page { width: 297mm; height: 210mm; }
-        .landscape-mode .page-content { flex-direction: row; gap: 20px; }
-        .landscape-mode .img-wrap { flex: 65; height: 100%; }
-        .landscape-mode .exercise-details { flex: 35; height: 100%; }
-
         .portrait-mode .a4-page { width: 210mm; height: 297mm; }
         .portrait-mode .page-content { flex-direction: column; gap: 15px; }
         .portrait-mode .img-wrap { height: 60%; width: 100%; flex: none; } 
@@ -624,7 +596,7 @@
         .portrait-mode .editable-desc { font-size: 13pt; min-height: 0; } 
 
         @media print {
-            #sidebar, #patient-panel, .top-right-controls, .no-print, #login-overlay { display: none !important; }
+            #sidebar, #patient-panel, .no-print, #login-overlay, .top-right-controls { display: none !important; }
             #preview-area { margin: 0; padding: 0; width: 100%; }
             #page-container { transform: scale(1) !important; margin: 0; }
             .a4-page { margin: 0; padding: 10mm 15mm; page-break-after: always; box-shadow: none; border: none; }
@@ -634,56 +606,37 @@
     </style>
 </head>
 <body class="landscape-mode">
-
-    <div id="login-overlay">
-        <div class="login-box">
-            <h2>재활 가이드 시스템</h2>
-            <p>사원번호를 입력하세요.</p>
-            <input type="text" id="emp-id" placeholder="사원번호 입력" onkeypress="if(event.key==='Enter')attemptLogin()">
-            <button onclick="attemptLogin()">로그인</button>
-        </div>
-    </div>
-
+    <div id="login-overlay"><div class="login-box"><h2>재활 시스템</h2><input type="text" id="emp-id" placeholder="사번 입력" onkeypress="if(event.key==='Enter')attemptLogin()"><button onclick="attemptLogin()">로그인</button></div></div>
+    
     <div class="top-right-controls no-print">
         <button id="mode-landscape-btn" class="mode-btn active" onclick="setPrintMode('landscape')">🗤 가로 모드</button>
         <button id="mode-portrait-btn" class="mode-btn" onclick="setPrintMode('portrait')">📄 세로 모드</button>
         <button class="print-btn-fixed" onclick="window.print()">🖨️ 인쇄하기</button>
     </div>
-    
+
     <div id="sidebar">
         <div class="user-profile no-print"><div><span id="logged-in-user">-</span></div><button class="logout-btn" onclick="logout()">로그아웃</button></div>
-        
         <h3>처방 설정</h3>
-        
         <div style="display:flex; gap:5px; margin-bottom:15px;">
-            <button id="admin-toggle-btn" class="admin-toggle-btn" style="flex:1; margin:0;" onclick="toggleAdmin()">⚙️ 목록 수정</button>
-            <button class="admin-toggle-btn" style="flex:1; margin:0; background:#17a2b8;" onclick="resetSelection()">🔄 선택 초기화</button>
+            <button id="admin-toggle-btn" class="admin-toggle-btn" style="flex:1;" onclick="toggleAdmin()">⚙️ 목록 수정</button>
+            <button class="admin-toggle-btn" style="flex:1; background:#17a2b8;" onclick="resetSelection()">🔄 선택 초기화</button>
         </div>
-
-        <div style="margin-bottom:10px;">
-            <input type="text" id="pIn" placeholder="환자 성함" oninput="renderPreview()" style="width:100%; padding:8px; border:1px solid #ddd; border-radius:4px;">
-        </div>
-        <div style="margin-bottom:10px;">
-            <input type="text" id="chartIn" placeholder="병록번호(ID)" style="width:100%; padding:8px; border:1px solid #ddd; border-radius:4px;">
-        </div>
-        
+        <input type="text" id="pIn" placeholder="환자 성함" oninput="renderPreview()" style="width:100%; padding:8px; margin-bottom:5px; border:1px solid #ddd; border-radius:4px; box-sizing:border-box;">
+        <input type="text" id="chartIn" placeholder="병록번호" style="width:100%; padding:8px; margin-bottom:10px; border:1px solid #ddd; border-radius:4px; box-sizing:border-box;">
         <input type="text" id="searchEx" class="search-box no-print" placeholder="🔍 운동 검색 (예: 스쿼트)" oninput="filterExercises()">
-
         <div id="super-admin-panel" class="no-print"><h4>👨‍⚕️ 치료사 관리</h4><div id="t-list"></div><button onclick="addTherapist()" style="width:100%; padding:10px; background:#28a745; color:white; border:none; border-radius:5px; margin-top:10px; cursor:pointer; font-weight:bold;">+ 새 치료사 등록</button></div>
-        
-        <div id="controls" style="margin-top:10px;"></div>
+        <div id="controls"></div>
         <div id="admin-area"></div>
     </div>
 
     <div id="patient-panel" class="no-print">
-        <div class="patient-panel-header">📋 환자 처방 관리</div>
-        <textarea id="pMemo" class="secret-memo" placeholder="📝 [치료사 전용] 환자 상태나 다음 치료 인수인계 메모를 남겨주세요. (인쇄본에는 나오지 않습니다)"></textarea>
+        <div style="font-weight:bold; margin-bottom:10px;">📋 환자 처방 관리</div>
+        <textarea id="pMemo" class="secret-memo" placeholder="📝 [치료사 전용] 환자 상태나 인수인계 메모 (인쇄 제외)"></textarea>
         <button class="save-routine-btn" onclick="savePatientRoutine()">💾 현재 처방 및 메모 저장</button>
-        <div style="font-size: 13px; font-weight: bold; margin-bottom: 10px; color: #555;">나의 환자 목록 (이름 클릭 시 내역 확장)</div>
+        <div style="font-size: 13px; font-weight: bold; margin-bottom: 10px; color: #555;">나의 환자 목록</div>
         <div id="patient-list-container"></div>
     </div>
     
     <div id="preview-area"><div id="page-container"></div></div>
-
 </body>
 </html>
