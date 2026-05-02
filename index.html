@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>재활 시스템 - 전체 코드 복구</title>
+    <title>재활 시스템 - 드래그 앤 드롭 기능 추가</title>
     
     <style id="dynamic-print-style">
         @media print { @page { size: landscape; margin: 0; } }
@@ -48,11 +48,8 @@
                 document.getElementById('bottom-nav').style.display = 'flex';
                 document.querySelector('.top-right-controls').style.display = 'flex';
                 document.getElementById('main-app-container').style.display = 'flex';
-                
                 document.getElementById('logged-in-user').innerText = savedName;
-                if (loginID === '0000') {
-                    document.getElementById('tab-admin').style.display = 'flex';
-                }
+                if (loginID === '0000') document.getElementById('tab-admin').style.display = 'flex';
             } else {
                 document.getElementById('login-overlay').style.display = 'flex';
             }
@@ -62,15 +59,8 @@
             try {
                 const tSnap = await getDoc(doc(db, "settings", "therapists"));
                 if (tSnap.exists()) {
-                    let rawT = tSnap.data();
-                    let migratedT = {};
-                    for(let k in rawT) {
-                        if(typeof rawT[k] === 'string') {
-                            migratedT[k] = { name: rawT[k], pw: k }; 
-                        } else {
-                            migratedT[k] = rawT[k];
-                        }
-                    }
+                    let rawT = tSnap.data(); let migratedT = {};
+                    for(let k in rawT) { migratedT[k] = (typeof rawT[k] === 'string') ? { name: rawT[k], pw: k } : rawT[k]; }
                     window.therapistDB = migratedT;
                 }
                 if (!window.therapistDB["0000"]) window.therapistDB["0000"] = { name: "최고관리자", pw: "0000" };
@@ -80,14 +70,9 @@
 
                 const listSnap = await getDoc(doc(db, "settings", "exerciseList"));
                 let rawData = listSnap.exists() ? listSnap.data() : {};
-                
                 const requiredCategories = ["목", "어깨", "팔꿈치", "손목", "허리", "고관절", "무릎", "발목"];
-                requiredCategories.forEach(cat => {
-                    if (!rawData[cat]) rawData[cat] = { "스트레칭": [], "운동": [] };
-                });
-                for (let key in rawData) { 
-                    if (Array.isArray(rawData[key])) { rawData[key] = { "스트레칭": rawData[key], "운동": [] }; } 
-                }
+                requiredCategories.forEach(cat => { if (!rawData[cat]) rawData[cat] = { "스트레칭": [], "운동": [] }; });
+                for (let key in rawData) { if (Array.isArray(rawData[key])) { rawData[key] = { "스트레칭": rawData[key], "운동": [] }; } }
                 window.exerciseData = rawData;
 
                 const descSnap = await getDoc(doc(db, "settings", "exerciseDescriptions"));
@@ -102,7 +87,6 @@
 
                 const vidSnap = await getDoc(doc(db, "settings", "exerciseVideos"));
                 if (vidSnap.exists()) window.exerciseVideos = vidSnap.data();
-
             } catch (e) { console.error(e); }
             renderControls(); renderPatientList(); renderPreview();
         }
@@ -110,25 +94,19 @@
         window.attemptLogin = function() {
             const idInput = document.getElementById('emp-id').value.trim();
             const pwInput = document.getElementById('emp-pw').value.trim();
-            
             if (window.therapistDB[idInput] && window.therapistDB[idInput].pw === pwInput) {
                 sessionStorage.setItem('loggedInID', idInput);
                 sessionStorage.setItem('loggedInName', window.therapistDB[idInput].name);
                 location.reload(); 
-            } else { 
-                alert("사원번호 또는 비밀번호가 일치하지 않습니다."); 
-            }
+            } else { alert("사원번호 또는 비밀번호가 일치하지 않습니다."); }
         };
 
         window.logout = function() { sessionStorage.clear(); location.reload(); };
 
         window.switchTab = async function(tab) {
             if (window.currentTab === 'management' && tab !== 'management') {
-                syncDOMtoData();
-                await executeMigrations();
-                await setDoc(doc(db, "settings", "exerciseList"), window.exerciseData);
+                syncDOMtoData(); await executeMigrations(); await setDoc(doc(db, "settings", "exerciseList"), window.exerciseData);
             }
-
             window.currentTab = tab;
             document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
             document.getElementById('tab-' + tab).classList.add('active');
@@ -140,7 +118,6 @@
             } else {
                 document.getElementById('admin-app-container').style.display = 'none';
                 document.getElementById('main-app-container').style.display = 'flex';
-                
                 if (tab === 'management') {
                     window.isAdminMode = true;
                     document.getElementById('patient-panel').style.display = 'none';
@@ -152,8 +129,7 @@
                     document.getElementById('sidebar-patient-inputs').style.display = 'block';
                     document.getElementById('preview-area').style.right = '340px'; 
                 }
-                renderControls();
-                renderPreview();
+                renderControls(); renderPreview();
             }
         };
 
@@ -188,19 +164,13 @@
             if (window.therapistDB[id]) return alert("이미 존재하는 사원번호입니다.");
             const name = prompt("이름:"); if (!name) return;
             const pw = prompt("초기 비밀번호 설정:"); if (!pw) return;
-
             window.therapistDB[id] = { name: name, pw: pw };
-            await setDoc(doc(db, "settings", "therapists"), window.therapistDB);
-            renderTherapistList();
+            await setDoc(doc(db, "settings", "therapists"), window.therapistDB); renderTherapistList();
         };
 
         window.resetTherapistPw = async function(id) {
             const newPw = prompt(`[${window.therapistDB[id].name}] 치료사님의 새 비밀번호를 입력하세요:`);
-            if (newPw) {
-                window.therapistDB[id].pw = newPw;
-                await setDoc(doc(db, "settings", "therapists"), window.therapistDB);
-                alert("비밀번호가 성공적으로 변경되었습니다.");
-            }
+            if (newPw) { window.therapistDB[id].pw = newPw; await setDoc(doc(db, "settings", "therapists"), window.therapistDB); alert("비밀번호가 성공적으로 변경되었습니다."); }
         };
 
         window.deleteTherapist = async function(id) {
@@ -212,14 +182,7 @@
             const listDiv = document.getElementById('t-list'); listDiv.innerHTML = "";
             for (const [id, data] of Object.entries(window.therapistDB)) { 
                 if (id !== '0000') {
-                    listDiv.innerHTML += `
-                        <div class="t-item">
-                            <span>${id} : ${data.name}</span> 
-                            <div>
-                                <button onclick="resetTherapistPw('${id}')" style="background:#ffc107; color:#000; margin-right:5px;">PW변경</button>
-                                <button onclick="deleteTherapist('${id}')">삭제</button>
-                            </div>
-                        </div>`; 
+                    listDiv.innerHTML += `<div class="t-item"><span>${id} : ${data.name}</span> <div><button onclick="resetTherapistPw('${id}')" style="background:#ffc107; color:#000; margin-right:5px;">PW변경</button><button onclick="deleteTherapist('${id}')">삭제</button></div></div>`; 
                 }
             }
         }
@@ -227,38 +190,21 @@
         window.setPrintMode = function(mode) {
             const styleTag = document.getElementById('dynamic-print-style');
             if (mode === 'portrait') {
-                document.body.className = 'portrait-mode';
-                styleTag.innerHTML = '@media print { @page { size: portrait; margin: 0; } }';
-                document.getElementById('mode-portrait-btn').classList.add('active');
-                document.getElementById('mode-landscape-btn').classList.remove('active');
+                document.body.className = 'portrait-mode'; styleTag.innerHTML = '@media print { @page { size: portrait; margin: 0; } }';
+                document.getElementById('mode-portrait-btn').classList.add('active'); document.getElementById('mode-landscape-btn').classList.remove('active');
             } else {
-                document.body.className = 'landscape-mode';
-                styleTag.innerHTML = '@media print { @page { size: landscape; margin: 0; } }';
-                document.getElementById('mode-landscape-btn').classList.add('active');
-                document.getElementById('mode-portrait-btn').classList.remove('active');
+                document.body.className = 'landscape-mode'; styleTag.innerHTML = '@media print { @page { size: landscape; margin: 0; } }';
+                document.getElementById('mode-landscape-btn').classList.add('active'); document.getElementById('mode-portrait-btn').classList.remove('active');
             }
         };
 
         window.savePatientRoutine = async function() {
-            const pName = document.getElementById('pIn').value.trim();
-            const chartID = document.getElementById('chartIn').value.trim();
-            const pMemo = document.getElementById('pMemo').value.trim(); 
-            const loggedInID = sessionStorage.getItem('loggedInID');
-
-            if (!pName || !chartID) return alert("성함과 병록번호 필수!");
-            if (window.selectedExercises.length === 0) return alert("운동 선택 필수!");
-
-            const routineData = window.selectedExercises.map(ex => {
-                const descBox = document.getElementById(`desc_${ex.id}`);
-                return { ...ex, customDesc: descBox ? descBox.innerHTML : "" };
-            });
-
+            const pName = document.getElementById('pIn').value.trim(); const chartID = document.getElementById('chartIn').value.trim();
+            const pMemo = document.getElementById('pMemo').value.trim(); const loggedInID = sessionStorage.getItem('loggedInID');
+            if (!pName || !chartID) return alert("성함과 병록번호 필수!"); if (window.selectedExercises.length === 0) return alert("운동 선택 필수!");
+            const routineData = window.selectedExercises.map(ex => { const descBox = document.getElementById(`desc_${ex.id}`); return { ...ex, customDesc: descBox ? descBox.innerHTML : "" }; });
             const saveKey = `${chartID}_${pName}_${Date.now()}`; 
-            window.patientDB[saveKey] = {
-                chartID, pName, memo: pMemo, exercises: routineData, 
-                therapistName: sessionStorage.getItem('loggedInName'), therapistID: loggedInID,
-                date: new Date().toLocaleDateString() + " " + new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})
-            };
+            window.patientDB[saveKey] = { chartID, pName, memo: pMemo, exercises: routineData, therapistName: sessionStorage.getItem('loggedInName'), therapistID: loggedInID, date: new Date().toLocaleDateString() + " " + new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) };
             try { await setDoc(doc(db, "settings", "patients"), window.patientDB); alert("저장되었습니다."); renderPatientList(); } catch (e) { alert("실패!"); }
         };
 
@@ -291,11 +237,7 @@
         
         function removeDeletedFromSelection() {
             window.selectedExercises = window.selectedExercises.filter(ex => {
-                if(window.exerciseData[ex.joint]) {
-                    for(let folder in window.exerciseData[ex.joint]) {
-                        if(window.exerciseData[ex.joint][folder].includes(ex.name)) return true;
-                    }
-                } return false;
+                if(window.exerciseData[ex.joint]) { for(let folder in window.exerciseData[ex.joint]) { if(window.exerciseData[ex.joint][folder].includes(ex.name)) return true; } } return false;
             });
         }
 
@@ -304,13 +246,86 @@
             window.exerciseData[catTitle][fTitle] = window.exerciseData[catTitle][fTitle].filter(e => e !== exName); removeDeletedFromSelection(); renderControls(); renderPreview(); 
         }
 
+        // 🌟 드래그 앤 드롭 핵심 기능 🌟
+        window.dragStart = function(e, joint, name) {
+            e.dataTransfer.setData('joint', joint);
+            e.dataTransfer.setData('name', name);
+        };
+
+        window.allowDrop = function(e) { e.preventDefault(); };
+
+        // 텅 빈 화면에 드롭할 때
+        window.dropEmpty = function(e) {
+            e.preventDefault();
+            const joint = e.dataTransfer.getData('joint'); const name = e.dataTransfer.getData('name');
+            if (joint && name) addExerciseToSelection(joint, name, window.selectedExercises.length);
+        };
+
+        // 기존 페이지 위에 드래그 오버할 때 위/아래 판단하여 스타일 적용
+        window.handleDragOverPage = function(e) {
+            e.preventDefault();
+            const rect = e.currentTarget.getBoundingClientRect();
+            const isTopHalf = (e.clientY - rect.top) < (rect.height / 2);
+            if(isTopHalf) {
+                e.currentTarget.classList.add('drag-over-top');
+                e.currentTarget.classList.remove('drag-over-bottom');
+            } else {
+                e.currentTarget.classList.add('drag-over-bottom');
+                e.currentTarget.classList.remove('drag-over-top');
+            }
+        };
+
+        window.handleDragLeavePage = function(e) {
+            e.currentTarget.classList.remove('drag-over-top', 'drag-over-bottom');
+        };
+
+        // 특정 슬라이드에 드롭했을 때 순서 계산하여 삽입
+        window.dropOnPage = function(e, targetIdx) {
+            e.preventDefault();
+            e.currentTarget.classList.remove('drag-over-top', 'drag-over-bottom');
+            const joint = e.dataTransfer.getData('joint');
+            const name = e.dataTransfer.getData('name');
+            if (!joint || !name) return;
+
+            const rect = e.currentTarget.getBoundingClientRect();
+            const isTopHalf = (e.clientY - rect.top) < (rect.height / 2);
+            // 위에 떨구면 현재 인덱스에 삽입, 아래에 떨구면 현재 인덱스+1 에 삽입
+            let insertIndex = isTopHalf ? targetIdx : targetIdx + 1;
+            
+            addExerciseToSelection(joint, name, insertIndex);
+        };
+
+        // 선택 리스트에 추가 (이미 존재하면 원래 위치에서 빼고 새 위치로 이동)
+        function addExerciseToSelection(joint, name, insertIndex) {
+            const id = `${joint}_${name}`;
+            const existingIndex = window.selectedExercises.findIndex(ex => ex.id === id);
+            let customDesc = window.exerciseDescriptions[id] || "방법을 입력하세요.";
+            
+            if (existingIndex !== -1) {
+                customDesc = window.selectedExercises[existingIndex].customDesc; // 기존 설명 유지
+                window.selectedExercises.splice(existingIndex, 1);
+                // 배열 길이가 줄어들었으므로 insertIndex 보정
+                if (existingIndex < insertIndex) insertIndex--;
+            }
+
+            const newItem = { joint: joint, name: name, id: id, customDesc: customDesc };
+            window.selectedExercises.splice(insertIndex, 0, newItem);
+            
+            renderControls(); 
+            renderPreview();
+        }
+
+        // 체크박스 클릭 대응 (단순 추가/제거)
         window.handleCheck = function(c) {
             const j = c.getAttribute('data-joint'), n = c.getAttribute('data-name'), id = `${j}_${n}`;
             if (c.checked) {
-                const masterDesc = window.exerciseDescriptions[id] || "방법을 입력하세요.";
-                window.selectedExercises.push({ joint:j, name:n, id:id, customDesc: masterDesc });
-            } else { window.selectedExercises = window.selectedExercises.filter(ex => ex.id !== id); }
-            renderPreview();
+                if(!window.selectedExercises.some(ex => ex.id === id)) {
+                    addExerciseToSelection(j, n, window.selectedExercises.length);
+                }
+            } else { 
+                window.selectedExercises = window.selectedExercises.filter(ex => ex.id !== id); 
+                renderControls(); renderPreview();
+            }
         }
 
         window.removeExerciseFromPreview = function(id) { window.selectedExercises = window.selectedExercises.filter(ex => ex.id !== id); renderControls(); renderPreview(); };
@@ -318,33 +333,17 @@
         window.setVideoLink = async function(id) { const currentUrl = window.exerciseVideos[id] || ""; const url = prompt("유튜브(영상) 주소:", currentUrl); if (url !== null) { try { await setDoc(doc(db, "settings", "exerciseVideos"), { [id]: url }, { merge: true }); window.exerciseVideos[id] = url; renderPreview(); } catch(e) { alert("저장 실패!"); } } };
         window.addMacro = function(id, text) { const descBox = document.getElementById(`desc_${id}`); descBox.innerHTML += (descBox.innerHTML.trim() === '' ? '' : '<br>') + `▶ ${text}`; };
 
-        // 🌟 수정된 사진 처리 로직 (최대 해상도 1000px, 85% 압축) 🌟
         window.processAndSaveImage = function(file, id) {
             const reader = new FileReader(); reader.readAsDataURL(file);
             reader.onload = function(event) {
                 const img = new Image(); img.src = event.target.result;
                 img.onload = async function() {
-                    const canvas = document.createElement('canvas'); 
-                    let w = img.width, h = img.height; 
-                    
-                    const MAX = 1000; // 해상도 향상
+                    const canvas = document.createElement('canvas'); let w = img.width, h = img.height; const MAX = 1000; 
                     if (w > h) { if (w > MAX) { h *= MAX / w; w = MAX; } } else { if (h > MAX) { w *= MAX / h; h = MAX; } }
-                    
-                    canvas.width = w; canvas.height = h; 
-                    canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-                    
-                    const base64 = canvas.toDataURL('image/jpeg', 0.85); // 화질 압축률 감소 (더 선명하게)
-                    
-                    let imgs = window.exerciseImages[id] || []; if (typeof imgs === 'string') imgs = [imgs];
-                    imgs.push(base64);
-                    
-                    try { 
-                        await setDoc(doc(db, "settings", "exerciseImages"), { [id]: imgs }, { merge: true }); 
-                        window.exerciseImages[id] = imgs; 
-                        renderPreview(); 
-                    } catch (e) { 
-                        alert("⚠️ 저장 실패! 데이터베이스 용량(1MB)을 초과했습니다.\n한 운동에 너무 많은 고화질 사진을 넣을 수 없습니다."); 
-                    }
+                    canvas.width = w; canvas.height = h; canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+                    const base64 = canvas.toDataURL('image/jpeg', 0.85); 
+                    let imgs = window.exerciseImages[id] || []; if (typeof imgs === 'string') imgs = [imgs]; imgs.push(base64);
+                    try { await setDoc(doc(db, "settings", "exerciseImages"), { [id]: imgs }, { merge: true }); window.exerciseImages[id] = imgs; renderPreview(); } catch (e) { alert("⚠️ 저장 실패! 데이터베이스 용량(1MB) 초과"); }
                 }
             };
         }
@@ -436,9 +435,10 @@
                     
                     exercises.forEach((ex) => {
                         const id = `${joint}_${ex}`; const isChecked = window.selectedExercises.some(s => s.id === id) ? 'checked' : '';
+                        // 🌟 드래그 앤 드롭: draggable 속성과 ondragstart 이벤트 추가 🌟
                         fDiv.innerHTML += `
-                        <div class="exercise-item" style="display:flex; align-items:center; margin-bottom:5px;">
-                            <label style="flex:1; display:flex; align-items:center; gap:5px; margin:0; cursor:pointer;">
+                        <div class="exercise-item draggable-item" draggable="true" ondragstart="dragStart(event, '${joint}', '${ex}')" style="display:flex; align-items:center; margin-bottom:5px; cursor:grab;">
+                            <label style="flex:1; display:flex; align-items:center; gap:5px; margin:0; cursor:grab;">
                                 <input type="checkbox" data-joint="${joint}" data-folder="${folder}" data-name="${ex}" onchange="handleCheck(this)" ${isChecked}>
                                 <span class="exercise-title-text" contenteditable="${window.isAdminMode}" data-old-ex-key="${ex}" 
                                       style="${window.isAdminMode ? 'background:#fff; border:1px dashed #aaa; padding:2px 4px; border-radius:4px; flex:1; cursor:text;' : 'flex:1;'}" 
@@ -454,24 +454,20 @@
 
         window.renderPreview = function() {
             window.selectedExercises = window.selectedExercises.filter(item => {
-                if (window.exerciseData[item.joint]) {
-                    for (let folder in window.exerciseData[item.joint]) {
-                        if (window.exerciseData[item.joint][folder].includes(item.name)) return true; 
-                    }
-                }
-                return false; 
+                if (window.exerciseData[item.joint]) { for (let folder in window.exerciseData[item.joint]) { if (window.exerciseData[item.joint][folder].includes(item.name)) return true; } } return false; 
             });
 
             const container = document.getElementById('page-container');
             const pName = document.getElementById('pIn').value || "________"; const tName = sessionStorage.getItem('loggedInName') || "________";
             container.innerHTML = "";
             
+            // 🌟 텅 빈 화면도 드롭존으로 활성화 🌟
             if (window.selectedExercises.length === 0) { 
                 container.innerHTML = `
-                <div class="empty-state">
+                <div class="empty-state drop-zone" ondragover="allowDrop(event)" ondrop="dropEmpty(event)">
                     <div class="empty-icon">📁</div>
                     <h2>선택된 운동이 없습니다</h2>
-                    <p>왼쪽 목록에서 환자에게 처방할 운동을 체크해주세요.</p>
+                    <p>왼쪽 목록의 운동을 이 곳으로 <b>드래그 앤 드롭</b> 하거나 체크박스를 누르세요.</p>
                 </div>`; 
                 return; 
             }
@@ -500,8 +496,12 @@
                         <button onclick="addMacro('${id}', '🚨 주의: 통증 발생 시 즉시 중단하세요.')" style="color:#e63946;">🚨 통증 주의</button>
                     </div>`;
 
+                // 🌟 A4 페이지 각각에 드롭존 이벤트 바인딩 🌟
                 container.innerHTML += `
-                <div class="a4-page" id="preview_${id}">
+                <div class="a4-page drop-zone-page" id="preview_${id}" 
+                     ondragover="handleDragOverPage(event)" 
+                     ondragleave="handleDragLeavePage(event)" 
+                     ondrop="dropOnPage(event, ${idx})">
                     <div class="page-header">
                         <h1>재활 운동 가이드</h1>
                         <div style="display:flex; align-items:center; gap:10px;">
@@ -555,7 +555,7 @@
         #patient-panel { width: 340px; height: 100vh; background: var(--bg-color); padding: 20px; position: fixed; right: 0; top: 0; border-left: 2px solid #ddd; box-sizing: border-box; overflow-y: auto; z-index: 10; padding-bottom: 80px; }
         
         #preview-area { position: fixed; left: 280px; right: 340px; top: 0; bottom: 0; overflow: auto; padding-top: 80px; padding-bottom: 80px; box-sizing: border-box; transition: right 0.3s; background:#e2e8f0; }
-        #page-container { display: flex; flex-direction: column; align-items: center; transform: scale(0.8); transform-origin: top center; margin-bottom: -15%; }
+        #page-container { display: flex; flex-direction: column; align-items: center; transform: scale(0.8); transform-origin: top center; margin-bottom: -15%; min-height: 100%; width: 100%;}
         
         #admin-app-container { width: 100%; height: 100vh; justify-content: center; align-items: center; background: var(--bg-color); }
         
@@ -580,8 +580,11 @@
         .category-title { font-weight: bold; color: var(--primary-medical); display: flex; justify-content: space-between; margin-bottom: 5px; }
         .folder-box { margin-left: 8px; border-left: 2px solid #ccc; padding-left: 10px; margin-top: 8px; }
         .folder-title { font-size: 13px; font-weight: bold; display: flex; justify-content: space-between; margin-bottom: 5px; color:#555; }
-        .exercise-item { font-size: 13px; margin-bottom: 4px; }
         
+        /* 🌟 드래그 가능한 아이템 시각적 효과 🌟 */
+        .draggable-item:hover { background: #f0f7ff; border-radius: 4px; }
+        .draggable-item:active { opacity: 0.5; }
+
         .patient-group { margin-bottom: 10px; background: white; border-radius: 8px; border: 1px solid #e1e4e8; overflow: hidden; }
         .patient-group-title { display: flex; justify-content: space-between; align-items: center; padding: 12px; background: #fff; border-bottom: 1px solid #eee; cursor: pointer; }
         .new-routine-btn { background: var(--primary-medical); color: white; border: none; padding: 5px 10px; border-radius: 4px; font-size: 11px; cursor: pointer; font-weight: bold; margin-left: 10px; }
@@ -597,12 +600,17 @@
         .t-item { display: flex; justify-content: space-between; align-items: center; padding: 10px; border-bottom: 1px solid #eee; font-size: 14px; background:#fff; margin-bottom:5px; border-radius:5px;}
         .t-item button { border: none; border-radius: 4px; padding: 6px 12px; cursor: pointer; font-size: 12px; font-weight:bold;}
 
-        .empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 50vh; color: #6c757d; text-align: center; }
+        .empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 50vh; width: 80%; border: 3px dashed #ccc; border-radius: 20px; color: #6c757d; text-align: center; margin-top: 50px; transition: 0.3s; }
+        .empty-state.drag-over { background: #f0f7ff; border-color: var(--primary-medical); }
         .empty-icon { font-size: 70px; margin-bottom: 15px; opacity: 0.3; }
         .empty-state h2 { margin: 0 0 10px 0; color: #495057; font-size: 22px; }
         .empty-state p { margin: 0; font-size: 14px; }
 
-        .a4-page { background: #fff; margin-bottom: 20px; padding: 5mm 10mm 10mm 10mm; box-sizing: border-box; display: flex; flex-direction: column; position: relative; box-shadow: 0 5px 15px rgba(0,0,0,0.1); width: 297mm; height: 210mm; }
+        /* 🌟 슬라이드 드롭존 경계선 효과 (위/아래) 🌟 */
+        .a4-page { background: #fff; margin-bottom: 20px; padding: 5mm 10mm 10mm 10mm; box-sizing: border-box; display: flex; flex-direction: column; position: relative; box-shadow: 0 5px 15px rgba(0,0,0,0.1); width: 297mm; height: 210mm; transition: border 0.1s; border: 5px solid transparent; }
+        .a4-page.drag-over-top { border-top: 5px solid var(--primary-medical); }
+        .a4-page.drag-over-bottom { border-bottom: 5px solid var(--primary-medical); }
+
         .page-header { border-bottom: 2px solid var(--primary-medical); display: flex; justify-content: space-between; align-items: center; padding-bottom: 3px; margin-bottom: 3mm; }
         .page-header h1 { margin: 0; font-size: 22pt; letter-spacing: -1px; color: var(--primary-medical); }
         .patient-info { font-size: 12pt; }
@@ -612,7 +620,7 @@
         .img-wrap { flex: 65; border: 1px solid #eee; border-radius: 8px; overflow: hidden; display: flex; align-items: center; justify-content: center; background: #fafafa; position: relative; outline: none; }
         .vertical-img-container { display: flex; flex-direction: column; width: 100%; height: 100%; }
         
-        /* 🌟 사진 잘림 방지 (fill 사용) 🌟 */
+        /* 사진 잘림 방지 (fill) 적용 */
         .split-img-item { flex: 1; position: relative; width: 100%; height: 50%; overflow: hidden; border-bottom: 1px solid #ddd; }
         .split-img-item img { width: 100%; height: 100%; object-fit: fill; }
         
@@ -620,17 +628,17 @@
         
         .exercise-details { flex: 35; display: flex; flex-direction: column; gap: 8px; position: relative; }
         .exercise-title-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
-        .exercise-title-row h3 { margin: 0; font-size: 20pt; color: #333; line-height: 1.2; flex: 1; word-break: keep-all; }
+        .exercise-title-row h3 { margin: 0; font-size: 20pt; color: #333; line-height: 1.2; flex: 1; word-break: keep-all; pointer-events: none;}
         .save-btn { padding: 5px 12px; background: var(--save-teal); color: white; border: none; border-radius: 4px; font-size: 12px; font-weight: bold; cursor: pointer; }
-        .macro-btns { display: flex; gap: 4px; flex-wrap: wrap; }
-        .macro-btns button { padding: 3px 6px; font-size: 10px; background: #f8f8f8; border: 1px solid #ddd; border-radius: 4px; cursor: pointer; font-weight: bold; color: #333; }
+        .macro-btns { display: flex; gap: 4px; flex-wrap: wrap; pointer-events: none;}
+        .macro-btns button { padding: 3px 6px; font-size: 10px; background: #f8f8f8; border: 1px solid #ddd; border-radius: 4px; cursor: pointer; font-weight: bold; color: #333; pointer-events: auto;}
         .editable-desc { flex: 1; font-size: 11pt; line-height: 1.6; border: 1px solid #f0f0f0; padding: 10px; border-radius: 6px; overflow-y: auto; background: #fdfdfd; min-height: 0; }
         
         .qr-box { position: absolute; bottom: 10px; right: 10px; background: #fff; padding: 5px; border-radius: 8px; border: 1px solid #eee; }
         .qr-img { width: 70px; height: 70px; display: block; }
-        .page-footer { margin-top: auto; border-top: 1px solid #ddd; padding-top: 8px; display: flex; justify-content: flex-end; align-items: center; }
+        .page-footer { margin-top: auto; border-top: 1px solid #ddd; padding-top: 8px; display: flex; justify-content: flex-end; align-items: center; pointer-events: none;}
         .page-num-indicator { font-size: 10pt; color: #888; font-weight: bold; }
-        .img-edit-btn { background: #333; color: #fff; border: none; border-radius: 4px; font-size: 11px; padding: 6px 10px; cursor: pointer; font-weight:bold; }
+        .img-edit-btn { background: #333; color: #fff; border: none; border-radius: 4px; font-size: 11px; padding: 6px 10px; cursor: pointer; font-weight:bold; pointer-events: auto;}
         
         .landscape-mode .a4-page { width: 297mm; height: 210mm; }
         .portrait-mode .a4-page { width: 210mm; height: 297mm; }
