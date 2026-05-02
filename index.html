@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>재활 시스템 - 사진 화질 및 잘림 개선</title>
+    <title>재활 시스템 - 전체 코드 복구</title>
     
     <style id="dynamic-print-style">
         @media print { @page { size: landscape; margin: 0; } }
@@ -318,7 +318,7 @@
         window.setVideoLink = async function(id) { const currentUrl = window.exerciseVideos[id] || ""; const url = prompt("유튜브(영상) 주소:", currentUrl); if (url !== null) { try { await setDoc(doc(db, "settings", "exerciseVideos"), { [id]: url }, { merge: true }); window.exerciseVideos[id] = url; renderPreview(); } catch(e) { alert("저장 실패!"); } } };
         window.addMacro = function(id, text) { const descBox = document.getElementById(`desc_${id}`); descBox.innerHTML += (descBox.innerHTML.trim() === '' ? '' : '<br>') + `▶ ${text}`; };
 
-        // 🌟 사진 처리 로직 (화질 개선 적용) 🌟
+        // 🌟 수정된 사진 처리 로직 (최대 해상도 1000px, 85% 압축) 🌟
         window.processAndSaveImage = function(file, id) {
             const reader = new FileReader(); reader.readAsDataURL(file);
             reader.onload = function(event) {
@@ -327,15 +327,13 @@
                     const canvas = document.createElement('canvas'); 
                     let w = img.width, h = img.height; 
                     
-                    // 🌟 개선 포인트 1: 최대 해상도를 600px에서 1000px로 증가
-                    const MAX = 1000; 
+                    const MAX = 1000; // 해상도 향상
                     if (w > h) { if (w > MAX) { h *= MAX / w; w = MAX; } } else { if (h > MAX) { w *= MAX / h; h = MAX; } }
                     
                     canvas.width = w; canvas.height = h; 
                     canvas.getContext('2d').drawImage(img, 0, 0, w, h);
                     
-                    // 🌟 개선 포인트 2: 이미지 압축률을 0.7(70%)에서 0.85(85%)로 올려 화질 향상
-                    const base64 = canvas.toDataURL('image/jpeg', 0.85); 
+                    const base64 = canvas.toDataURL('image/jpeg', 0.85); // 화질 압축률 감소 (더 선명하게)
                     
                     let imgs = window.exerciseImages[id] || []; if (typeof imgs === 'string') imgs = [imgs];
                     imgs.push(base64);
@@ -614,7 +612,7 @@
         .img-wrap { flex: 65; border: 1px solid #eee; border-radius: 8px; overflow: hidden; display: flex; align-items: center; justify-content: center; background: #fafafa; position: relative; outline: none; }
         .vertical-img-container { display: flex; flex-direction: column; width: 100%; height: 100%; }
         
-        /* 🌟 CSS 1번 적용: 사진 잘림 방지 (fill 사용) 🌟 */
+        /* 🌟 사진 잘림 방지 (fill 사용) 🌟 */
         .split-img-item { flex: 1; position: relative; width: 100%; height: 50%; overflow: hidden; border-bottom: 1px solid #ddd; }
         .split-img-item img { width: 100%; height: 100%; object-fit: fill; }
         
@@ -652,4 +650,72 @@
     </style>
 </head>
 <body class="landscape-mode">
-    ```
+
+    <div id="global-loader">
+        <div class="spinner"></div>
+        <div style="margin-top: 20px; font-weight: bold; color: #005b96; font-size: 14px;">데이터를 불러오는 중입니다...</div>
+    </div>
+
+    <div id="login-overlay">
+        <div class="login-box">
+            <h2>재활 시스템 로그인</h2>
+            <input type="text" id="emp-id" placeholder="사원번호" onkeypress="if(event.key==='Enter')attemptLogin()">
+            <input type="password" id="emp-pw" placeholder="비밀번호" onkeypress="if(event.key==='Enter')attemptLogin()">
+            <button onclick="attemptLogin()">로그인</button>
+        </div>
+    </div>
+
+    <div class="top-right-controls no-print">
+        <button id="mode-landscape-btn" class="mode-btn active" onclick="setPrintMode('landscape')">🗤 가로 모드</button>
+        <button id="mode-portrait-btn" class="mode-btn" onclick="setPrintMode('portrait')">📄 세로 모드</button>
+        <button class="print-btn-fixed" onclick="window.print()">🖨️ 인쇄하기</button>
+    </div>
+
+    <div id="main-app-container">
+        <div id="sidebar">
+            <div class="user-profile no-print"><div><span id="logged-in-user">-</span></div><button class="logout-btn" onclick="logout()">로그아웃</button></div>
+            <div style="font-weight:bold; margin-bottom:10px; color:#005b96;">📋 목록 제어</div>
+            <div style="display:flex; gap:5px; margin-bottom:15px;">
+                <button class="admin-toggle-btn" style="flex:1; background:#00b4d8;" onclick="resetSelection()">🔄 선택 초기화</button>
+            </div>
+            <div id="sidebar-patient-inputs">
+                <input type="text" id="pIn" placeholder="환자 성함" oninput="renderPreview()" class="search-box">
+                <input type="text" id="chartIn" placeholder="병록번호" class="search-box">
+            </div>
+            <input type="text" id="searchEx" class="search-box no-print" placeholder="🔍 운동 검색 (예: 스쿼트)" oninput="filterExercises()">
+            <div id="controls"></div>
+        </div>
+
+        <div id="patient-panel" class="no-print">
+            <div style="font-weight:bold; margin-bottom:10px; color:#005b96;">📋 환자 처방 관리</div>
+            <textarea id="pMemo" class="secret-memo" placeholder="📝 [치료사 전용] 환자 상태나 인수인계 메모 (인쇄 제외)"></textarea>
+            <button class="save-routine-btn" style="width:100%; padding:12px; background:var(--save-teal); color:white; border:none; border-radius:8px; font-weight:bold; cursor:pointer; margin-bottom:10px;" onclick="savePatientRoutine()">💾 현재 처방 및 메모 저장</button>
+            <div style="font-size: 13px; font-weight: bold; margin-bottom: 10px; color: #555;">나의 환자 목록</div>
+            <div id="patient-list-container"></div>
+        </div>
+        
+        <div id="preview-area"><div id="page-container"></div></div>
+    </div>
+
+    <div id="admin-app-container">
+        <div style="width:400px; background:white; padding:30px; border-radius:15px; box-shadow:0 10px 25px rgba(0,0,0,0.1);">
+            <h2 style="margin-top:0; color:#005b96;">👨‍⚕️ 치료사 계정 관리</h2>
+            <div id="t-list" style="margin-bottom:20px; border:1px solid #eee; border-radius:8px; max-height:300px; overflow-y:auto; padding:10px; background:#fafafa;"></div>
+            <button onclick="addTherapist()" style="width:100%; padding:12px; background:var(--save-teal); color:white; border:none; border-radius:8px; font-weight:bold; cursor:pointer;">+ 새 치료사 등록</button>
+        </div>
+    </div>
+
+    <div id="bottom-nav" class="no-print">
+        <div id="tab-prescription" class="tab-btn active" onclick="switchTab('prescription')">
+            <span style="font-size:18px; margin-bottom:3px;">🏠</span> 처방 & 인쇄
+        </div>
+        <div id="tab-management" class="tab-btn" onclick="switchTab('management')">
+            <span style="font-size:18px; margin-bottom:3px;">⚙️</span> 운동 관리
+        </div>
+        <div id="tab-admin" class="tab-btn" style="display:none;" onclick="switchTab('admin')">
+            <span style="font-size:18px; margin-bottom:3px;">👤</span> 인사 관리
+        </div>
+    </div>
+
+</body>
+</html>
