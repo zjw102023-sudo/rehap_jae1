@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>재활 시스템 - 드래그 앤 드롭 기능 추가</title>
+    <title>재활 시스템 - 실무 최적화 (검색, 페이징, 매크로)</title>
     
     <style id="dynamic-print-style">
         @media print { @page { size: landscape; margin: 0; } }
@@ -30,6 +30,7 @@
         window.exerciseImages = {}; 
         window.exerciseVideos = {}; 
         window.patientDB = {}; 
+        window.macroList = ["10회 x 3세트 진행합니다.", "15회 x 3세트 진행합니다.", "🚨 주의: 통증 발생 시 즉시 중단하세요."]; // 🌟 전역 매크로 배열
         window.isAdminMode = false; 
         window.selectedExercises = []; 
         window.keyMigrations = {}; 
@@ -48,8 +49,11 @@
                 document.getElementById('bottom-nav').style.display = 'flex';
                 document.querySelector('.top-right-controls').style.display = 'flex';
                 document.getElementById('main-app-container').style.display = 'flex';
+                
                 document.getElementById('logged-in-user').innerText = savedName;
-                if (loginID === '0000') document.getElementById('tab-admin').style.display = 'flex';
+                if (loginID === '0000') {
+                    document.getElementById('tab-admin').style.display = 'flex';
+                }
             } else {
                 document.getElementById('login-overlay').style.display = 'flex';
             }
@@ -87,8 +91,15 @@
 
                 const vidSnap = await getDoc(doc(db, "settings", "exerciseVideos"));
                 if (vidSnap.exists()) window.exerciseVideos = vidSnap.data();
+
+                // 🌟 매크로 데이터 로드
+                const macSnap = await getDoc(doc(db, "settings", "macros"));
+                if (macSnap.exists() && macSnap.data().list) {
+                    window.macroList = macSnap.data().list;
+                }
+
             } catch (e) { console.error(e); }
-            renderControls(); renderPatientList(); renderPreview();
+            renderControls(); renderPatientList(); renderPreview(); renderMacroList();
         }
 
         window.attemptLogin = function() {
@@ -122,11 +133,13 @@
                     window.isAdminMode = true;
                     document.getElementById('patient-panel').style.display = 'none';
                     document.getElementById('sidebar-patient-inputs').style.display = 'none';
+                    document.getElementById('macro-management-section').style.display = 'block'; // 매크로 관리 패널 활성화
                     document.getElementById('preview-area').style.right = '0'; 
                 } else {
                     window.isAdminMode = false;
                     document.getElementById('patient-panel').style.display = 'block';
                     document.getElementById('sidebar-patient-inputs').style.display = 'block';
+                    document.getElementById('macro-management-section').style.display = 'none';
                     document.getElementById('preview-area').style.right = '340px'; 
                 }
                 renderControls(); renderPreview();
@@ -235,6 +248,36 @@
         window.deleteFolder = function(btn) { syncDOMtoData(); const catTitle = btn.closest('.category-box').querySelector('.category-title-text').innerText.trim(); const fTitle = btn.closest('.folder-box').querySelector('.folder-title-text').innerText.trim(); if(confirm(`삭제?`)) { delete window.exerciseData[catTitle][fTitle]; removeDeletedFromSelection(); renderControls(); renderPreview(); } }
         window.addExercise = function(btn) { syncDOMtoData(); const catTitle = btn.closest('.category-box').querySelector('.category-title-text').innerText.trim(); const fTitle = btn.closest('.folder-box').querySelector('.folder-title-text').innerText.trim(); const n = prompt(`운동명:`); if(n) { window.exerciseData[catTitle][fTitle].push(n); renderControls(); } }
         
+        // 🌟 전역 매크로 추가/삭제 로직 🌟
+        window.addGlobalMacro = async function() {
+            const text = prompt("새로운 매크로 문구를 입력하세요:");
+            if(text) {
+                window.macroList.push(text);
+                await setDoc(doc(db, "settings", "macros"), { list: window.macroList });
+                renderMacroList(); renderPreview();
+            }
+        };
+        window.deleteGlobalMacro = async function(idx) {
+            if(confirm("이 매크로를 삭제하시겠습니까?")) {
+                window.macroList.splice(idx, 1);
+                await setDoc(doc(db, "settings", "macros"), { list: window.macroList });
+                renderMacroList(); renderPreview();
+            }
+        };
+        function renderMacroList() {
+            const container = document.getElementById('macro-edit-list');
+            if(!container) return;
+            container.innerHTML = "";
+            window.macroList.forEach((m, idx) => {
+                container.innerHTML += `
+                    <div style="display:flex; justify-content:space-between; align-items:center; background:#f8faff; border:1px solid #cce5ff; padding:8px; margin-bottom:5px; border-radius:4px; font-size:12px;">
+                        <span style="flex:1;">${m}</span>
+                        <button onclick="deleteGlobalMacro(${idx})" style="background:none; border:none; color:#e63946; cursor:pointer; font-weight:bold;">❌</button>
+                    </div>
+                `;
+            });
+        }
+
         function removeDeletedFromSelection() {
             window.selectedExercises = window.selectedExercises.filter(ex => {
                 if(window.exerciseData[ex.joint]) { for(let folder in window.exerciseData[ex.joint]) { if(window.exerciseData[ex.joint][folder].includes(ex.name)) return true; } } return false;
@@ -246,90 +289,45 @@
             window.exerciseData[catTitle][fTitle] = window.exerciseData[catTitle][fTitle].filter(e => e !== exName); removeDeletedFromSelection(); renderControls(); renderPreview(); 
         }
 
-        // 🌟 드래그 앤 드롭 핵심 기능 🌟
+        // 드래그 앤 드롭 로직
         window.dragStart = function(e, joint, name) {
-            e.dataTransfer.setData('joint', joint);
-            e.dataTransfer.setData('name', name);
+            e.dataTransfer.setData('joint', joint); e.dataTransfer.setData('name', name);
         };
-
         window.allowDrop = function(e) { e.preventDefault(); };
-
-        // 텅 빈 화면에 드롭할 때
         window.dropEmpty = function(e) {
-            e.preventDefault();
-            const joint = e.dataTransfer.getData('joint'); const name = e.dataTransfer.getData('name');
+            e.preventDefault(); const joint = e.dataTransfer.getData('joint'); const name = e.dataTransfer.getData('name');
             if (joint && name) addExerciseToSelection(joint, name, window.selectedExercises.length);
         };
-
-        // 기존 페이지 위에 드래그 오버할 때 위/아래 판단하여 스타일 적용
         window.handleDragOverPage = function(e) {
-            e.preventDefault();
-            const rect = e.currentTarget.getBoundingClientRect();
-            const isTopHalf = (e.clientY - rect.top) < (rect.height / 2);
-            if(isTopHalf) {
-                e.currentTarget.classList.add('drag-over-top');
-                e.currentTarget.classList.remove('drag-over-bottom');
-            } else {
-                e.currentTarget.classList.add('drag-over-bottom');
-                e.currentTarget.classList.remove('drag-over-top');
-            }
+            e.preventDefault(); const rect = e.currentTarget.getBoundingClientRect(); const isTopHalf = (e.clientY - rect.top) < (rect.height / 2);
+            if(isTopHalf) { e.currentTarget.classList.add('drag-over-top'); e.currentTarget.classList.remove('drag-over-bottom'); } 
+            else { e.currentTarget.classList.add('drag-over-bottom'); e.currentTarget.classList.remove('drag-over-top'); }
         };
-
-        window.handleDragLeavePage = function(e) {
-            e.currentTarget.classList.remove('drag-over-top', 'drag-over-bottom');
-        };
-
-        // 특정 슬라이드에 드롭했을 때 순서 계산하여 삽입
+        window.handleDragLeavePage = function(e) { e.currentTarget.classList.remove('drag-over-top', 'drag-over-bottom'); };
         window.dropOnPage = function(e, targetIdx) {
-            e.preventDefault();
-            e.currentTarget.classList.remove('drag-over-top', 'drag-over-bottom');
-            const joint = e.dataTransfer.getData('joint');
-            const name = e.dataTransfer.getData('name');
+            e.preventDefault(); e.currentTarget.classList.remove('drag-over-top', 'drag-over-bottom');
+            const joint = e.dataTransfer.getData('joint'); const name = e.dataTransfer.getData('name');
             if (!joint || !name) return;
-
-            const rect = e.currentTarget.getBoundingClientRect();
-            const isTopHalf = (e.clientY - rect.top) < (rect.height / 2);
-            // 위에 떨구면 현재 인덱스에 삽입, 아래에 떨구면 현재 인덱스+1 에 삽입
+            const rect = e.currentTarget.getBoundingClientRect(); const isTopHalf = (e.clientY - rect.top) < (rect.height / 2);
             let insertIndex = isTopHalf ? targetIdx : targetIdx + 1;
-            
             addExerciseToSelection(joint, name, insertIndex);
         };
 
-        // 선택 리스트에 추가 (이미 존재하면 원래 위치에서 빼고 새 위치로 이동)
         function addExerciseToSelection(joint, name, insertIndex) {
-            const id = `${joint}_${name}`;
-            const existingIndex = window.selectedExercises.findIndex(ex => ex.id === id);
+            const id = `${joint}_${name}`; const existingIndex = window.selectedExercises.findIndex(ex => ex.id === id);
             let customDesc = window.exerciseDescriptions[id] || "방법을 입력하세요.";
-            
-            if (existingIndex !== -1) {
-                customDesc = window.selectedExercises[existingIndex].customDesc; // 기존 설명 유지
-                window.selectedExercises.splice(existingIndex, 1);
-                // 배열 길이가 줄어들었으므로 insertIndex 보정
-                if (existingIndex < insertIndex) insertIndex--;
-            }
-
-            const newItem = { joint: joint, name: name, id: id, customDesc: customDesc };
-            window.selectedExercises.splice(insertIndex, 0, newItem);
-            
-            renderControls(); 
-            renderPreview();
+            if (existingIndex !== -1) { customDesc = window.selectedExercises[existingIndex].customDesc; window.selectedExercises.splice(existingIndex, 1); if (existingIndex < insertIndex) insertIndex--; }
+            const newItem = { joint: joint, name: name, id: id, customDesc: customDesc }; window.selectedExercises.splice(insertIndex, 0, newItem);
+            renderControls(); renderPreview();
         }
 
-        // 체크박스 클릭 대응 (단순 추가/제거)
         window.handleCheck = function(c) {
             const j = c.getAttribute('data-joint'), n = c.getAttribute('data-name'), id = `${j}_${n}`;
-            if (c.checked) {
-                if(!window.selectedExercises.some(ex => ex.id === id)) {
-                    addExerciseToSelection(j, n, window.selectedExercises.length);
-                }
-            } else { 
-                window.selectedExercises = window.selectedExercises.filter(ex => ex.id !== id); 
-                renderControls(); renderPreview();
-            }
+            if (c.checked) { if(!window.selectedExercises.some(ex => ex.id === id)) { addExerciseToSelection(j, n, window.selectedExercises.length); } } 
+            else { window.selectedExercises = window.selectedExercises.filter(ex => ex.id !== id); renderControls(); renderPreview(); }
         }
 
         window.removeExerciseFromPreview = function(id) { window.selectedExercises = window.selectedExercises.filter(ex => ex.id !== id); renderControls(); renderPreview(); };
-
         window.setVideoLink = async function(id) { const currentUrl = window.exerciseVideos[id] || ""; const url = prompt("유튜브(영상) 주소:", currentUrl); if (url !== null) { try { await setDoc(doc(db, "settings", "exerciseVideos"), { [id]: url }, { merge: true }); window.exerciseVideos[id] = url; renderPreview(); } catch(e) { alert("저장 실패!"); } } };
         window.addMacro = function(id, text) { const descBox = document.getElementById(`desc_${id}`); descBox.innerHTML += (descBox.innerHTML.trim() === '' ? '' : '<br>') + `▶ ${text}`; };
 
@@ -350,38 +348,70 @@
         window.clearImages = async function(id) { if (confirm("전체 삭제?")) { await setDoc(doc(db, "settings", "exerciseImages"), { [id]: [] }, { merge: true }); window.exerciseImages[id] = []; renderPreview(); } }
         window.handlePaste = function(e, id) { if(!window.isAdminMode) return; const items = (e.clipboardData || e.originalEvent.clipboardData).items; for (let i in items) { if (items[i].kind === 'file' && items[i].type.startsWith('image/')) { processAndSaveImage(items[i].getAsFile(), id); break; } } }
 
-        function renderPatientList() {
+        // 🌟 환자 목록 페이징(접기) 기능 🌟
+        window.renderPatientList = function() {
             const pListDiv = document.getElementById('patient-list-container'); pListDiv.innerHTML = "";
             const currentID = sessionStorage.getItem('loggedInID');
             const grouped = {};
+            const query = document.getElementById('searchPatientIn')?.value.toLowerCase().trim() || "";
+
             Object.entries(window.patientDB).forEach(([key, d]) => {
                 if (currentID !== '0000' && d.therapistID !== currentID) return;
+                
+                // 🌟 검색 필터 적용
+                if (query && !d.pName.toLowerCase().includes(query) && !d.chartID.toLowerCase().includes(query)) return;
+
                 const pKey = `${d.chartID}_${d.pName}`;
                 if (!grouped[pKey]) grouped[pKey] = [];
                 grouped[pKey].push({ key, ...d });
             });
+
             for (const [pKey, records] of Object.entries(grouped)) {
                 const sortedRecords = records.sort((a,b) => b.key.split('_')[2] - a.key.split('_')[2]); 
                 const pName = sortedRecords[0].pName; const chartID = sortedRecords[0].chartID;
+                
                 const groupDiv = document.createElement('div'); groupDiv.className = 'patient-group';
-                groupDiv.innerHTML = `
-                    <div class="patient-group-title">
-                        <div onclick="this.parentElement.nextElementSibling.classList.toggle('active')" style="flex:1; cursor:pointer;"><strong>👤 ${pName}</strong> <span style="font-size:11px;">(#${chartID})</span></div>
-                        <button class="new-routine-btn" onclick="startNewRoutine('${pName}', '${chartID}')" title="새 처방 시작">➕ 새 처방</button>
-                    </div>
-                    <div class="patient-group-content">
-                        ${sortedRecords.map(r => `
+                
+                // 🌟 과거 기록 분리 로직 (최대 3개만 기본 노출)
+                const recentRecords = sortedRecords.slice(0, 3);
+                const olderRecords = sortedRecords.slice(3);
+
+                let listHtml = recentRecords.map(r => `
+                    <div class="visit-record">
+                        <div class="visit-date">📅 ${r.date} ${r.memo ? '<span style="color:#005b96;font-weight:bold;">[메모있음]</span>' : ''}</div>
+                        <div class="p-card-actions">
+                            <button class="p-btn-load" onclick="loadPatientRoutine('${r.key}')">불러오기</button>
+                            <button class="p-btn-del" onclick="deletePatientRoutine('${r.key}')">삭제</button>
+                        </div>
+                    </div>`).join('');
+                
+                if(olderRecords.length > 0) {
+                    listHtml += `
+                        <button class="show-more-btn" onclick="this.nextElementSibling.style.display='block'; this.style.display='none';">⬇ 이전 방문기록 ${olderRecords.length}개 더보기</button>
+                        <div style="display:none; border-top:1px dashed #ddd; margin-top:5px; padding-top:5px;">
+                            ${olderRecords.map(r => `
                             <div class="visit-record">
-                                <div class="visit-date">📅 ${r.date} ${r.memo ? '<span style="color:#005b96;font-weight:bold;">[메모있음]</span>' : ''}</div>
+                                <div class="visit-date">📅 ${r.date}</div>
                                 <div class="p-card-actions">
                                     <button class="p-btn-load" onclick="loadPatientRoutine('${r.key}')">불러오기</button>
                                     <button class="p-btn-del" onclick="deletePatientRoutine('${r.key}')">삭제</button>
                                 </div>
                             </div>`).join('')}
-                    </div>`;
+                        </div>
+                    `;
+                }
+
+                groupDiv.innerHTML = `
+                    <div class="patient-group-title">
+                        <div onclick="this.parentElement.nextElementSibling.classList.toggle('active')" style="flex:1; cursor:pointer;"><strong>👤 ${pName}</strong> <span style="font-size:11px;">(#${chartID})</span></div>
+                        <button class="new-routine-btn" onclick="startNewRoutine('${pName}', '${chartID}')" title="새 처방 시작">➕</button>
+                    </div>
+                    <div class="patient-group-content">${listHtml}</div>`;
                 pListDiv.appendChild(groupDiv);
             }
         }
+
+        window.searchPatients = function() { renderPatientList(); };
 
         window.filterExercises = function() {
             const keyword = document.getElementById('searchEx').value.toLowerCase().trim();
@@ -435,7 +465,6 @@
                     
                     exercises.forEach((ex) => {
                         const id = `${joint}_${ex}`; const isChecked = window.selectedExercises.some(s => s.id === id) ? 'checked' : '';
-                        // 🌟 드래그 앤 드롭: draggable 속성과 ondragstart 이벤트 추가 🌟
                         fDiv.innerHTML += `
                         <div class="exercise-item draggable-item" draggable="true" ondragstart="dragStart(event, '${joint}', '${ex}')" style="display:flex; align-items:center; margin-bottom:5px; cursor:grab;">
                             <label style="flex:1; display:flex; align-items:center; gap:5px; margin:0; cursor:grab;">
@@ -461,7 +490,6 @@
             const pName = document.getElementById('pIn').value || "________"; const tName = sessionStorage.getItem('loggedInName') || "________";
             container.innerHTML = "";
             
-            // 🌟 텅 빈 화면도 드롭존으로 활성화 🌟
             if (window.selectedExercises.length === 0) { 
                 container.innerHTML = `
                 <div class="empty-state drop-zone" ondragover="allowDrop(event)" ondrop="dropEmpty(event)">
@@ -489,19 +517,11 @@
                         <input type="file" id="f_${id}" accept="image/*" style="display:none" onchange="uploadLocalFile(this, '${id}')">
                     </div>` : '';
                 
-                const macroHtml = `
-                    <div class="macro-btns no-print">
-                        <button onclick="addMacro('${id}', '10회 x 3세트 진행합니다.')">10회 3세트</button>
-                        <button onclick="addMacro('${id}', '15회 x 3세트 진행합니다.')">15회 3세트</button>
-                        <button onclick="addMacro('${id}', '🚨 주의: 통증 발생 시 즉시 중단하세요.')" style="color:#e63946;">🚨 통증 주의</button>
-                    </div>`;
+                // 🌟 동적 매크로 생성 🌟
+                let dynamicMacros = window.macroList.map(m => `<button onclick="addMacro('${id}', '${m}')">${m.includes('🚨') ? `<span style="color:#e63946;">${m}</span>` : m}</button>`).join('');
 
-                // 🌟 A4 페이지 각각에 드롭존 이벤트 바인딩 🌟
                 container.innerHTML += `
-                <div class="a4-page drop-zone-page" id="preview_${id}" 
-                     ondragover="handleDragOverPage(event)" 
-                     ondragleave="handleDragLeavePage(event)" 
-                     ondrop="dropOnPage(event, ${idx})">
+                <div class="a4-page drop-zone-page" id="preview_${id}" ondragover="handleDragOverPage(event)" ondragleave="handleDragLeavePage(event)" ondrop="dropOnPage(event, ${idx})">
                     <div class="page-header">
                         <h1>재활 운동 가이드</h1>
                         <div style="display:flex; align-items:center; gap:10px;">
@@ -516,7 +536,7 @@
                                 <h3>[${item.joint}] ${item.name}</h3>
                                 ${window.isAdminMode ? `<button class="no-print save-btn" onclick="saveMasterDescription('${id}', document.getElementById('desc_${id}').innerHTML)" title="이 운동의 기본 설명을 영구적으로 덮어씁니다">💾 원본저장</button>` : ''}
                             </div>
-                            ${macroHtml}
+                            <div class="macro-btns no-print">${dynamicMacros}</div>
                             <div contenteditable="true" id="desc_${id}" class="editable-desc">${descText}</div>
                             ${qrHtml}
                         </div>
@@ -581,14 +601,13 @@
         .folder-box { margin-left: 8px; border-left: 2px solid #ccc; padding-left: 10px; margin-top: 8px; }
         .folder-title { font-size: 13px; font-weight: bold; display: flex; justify-content: space-between; margin-bottom: 5px; color:#555; }
         
-        /* 🌟 드래그 가능한 아이템 시각적 효과 🌟 */
         .draggable-item:hover { background: #f0f7ff; border-radius: 4px; }
         .draggable-item:active { opacity: 0.5; }
 
         .patient-group { margin-bottom: 10px; background: white; border-radius: 8px; border: 1px solid #e1e4e8; overflow: hidden; }
         .patient-group-title { display: flex; justify-content: space-between; align-items: center; padding: 12px; background: #fff; border-bottom: 1px solid #eee; cursor: pointer; }
         .new-routine-btn { background: var(--primary-medical); color: white; border: none; padding: 5px 10px; border-radius: 4px; font-size: 11px; cursor: pointer; font-weight: bold; margin-left: 10px; }
-        .patient-group-content { display: none; padding: 0 10px 10px 10px; background: #fafafa; }
+        .patient-group-content { display: none; padding: 10px; background: #fafafa; }
         .patient-group-content.active { display: block; }
         .visit-record { padding: 10px; border-top: 1px solid #eee; }
         .visit-date { font-size: 11px; color: #555; margin-bottom: 5px; }
@@ -596,6 +615,10 @@
         .p-btn-load { flex: 2; padding: 6px; font-size: 11px; cursor: pointer; background:#eee; border:1px solid #ccc; border-radius:4px; font-weight:bold;}
         .p-btn-del { flex: 1; padding: 6px; font-size: 11px; color: var(--danger-red); border: 1px solid var(--danger-red); background: #fff; cursor: pointer; border-radius:4px;}
         .secret-memo { width: 100%; height: 90px; resize: none; padding: 10px; box-sizing: border-box; border: 1px dashed #ff9800; border-radius: 6px; margin-bottom: 15px; background: #fffde7; font-size: 12px; font-family: inherit;}
+
+        /* 🌟 과거기록 보기 버튼 스타일 🌟 */
+        .show-more-btn { width: 100%; padding: 8px; background: #e2e8f0; border: none; border-radius: 4px; cursor: pointer; font-size: 11px; font-weight: bold; color: #555; margin-top: 5px; }
+        .show-more-btn:hover { background: #cbd5e1; }
 
         .t-item { display: flex; justify-content: space-between; align-items: center; padding: 10px; border-bottom: 1px solid #eee; font-size: 14px; background:#fff; margin-bottom:5px; border-radius:5px;}
         .t-item button { border: none; border-radius: 4px; padding: 6px 12px; cursor: pointer; font-size: 12px; font-weight:bold;}
@@ -606,7 +629,6 @@
         .empty-state h2 { margin: 0 0 10px 0; color: #495057; font-size: 22px; }
         .empty-state p { margin: 0; font-size: 14px; }
 
-        /* 🌟 슬라이드 드롭존 경계선 효과 (위/아래) 🌟 */
         .a4-page { background: #fff; margin-bottom: 20px; padding: 5mm 10mm 10mm 10mm; box-sizing: border-box; display: flex; flex-direction: column; position: relative; box-shadow: 0 5px 15px rgba(0,0,0,0.1); width: 297mm; height: 210mm; transition: border 0.1s; border: 5px solid transparent; }
         .a4-page.drag-over-top { border-top: 5px solid var(--primary-medical); }
         .a4-page.drag-over-bottom { border-bottom: 5px solid var(--primary-medical); }
@@ -620,7 +642,6 @@
         .img-wrap { flex: 65; border: 1px solid #eee; border-radius: 8px; overflow: hidden; display: flex; align-items: center; justify-content: center; background: #fafafa; position: relative; outline: none; }
         .vertical-img-container { display: flex; flex-direction: column; width: 100%; height: 100%; }
         
-        /* 사진 잘림 방지 (fill) 적용 */
         .split-img-item { flex: 1; position: relative; width: 100%; height: 50%; overflow: hidden; border-bottom: 1px solid #ddd; }
         .split-img-item img { width: 100%; height: 100%; object-fit: fill; }
         
@@ -686,18 +707,30 @@
             <div style="display:flex; gap:5px; margin-bottom:15px;">
                 <button class="admin-toggle-btn" style="flex:1; background:#00b4d8;" onclick="resetSelection()">🔄 선택 초기화</button>
             </div>
+            
             <div id="sidebar-patient-inputs">
                 <input type="text" id="pIn" placeholder="환자 성함" oninput="renderPreview()" class="search-box">
                 <input type="text" id="chartIn" placeholder="병록번호" class="search-box">
             </div>
+            
             <input type="text" id="searchEx" class="search-box no-print" placeholder="🔍 운동 검색 (예: 스쿼트)" oninput="filterExercises()">
+            
             <div id="controls"></div>
+
+            <div id="macro-management-section" style="display:none; margin-top:20px; border-top:2px dashed #eee; padding-top:15px;">
+                <div style="font-weight:bold; margin-bottom:10px; color:#005b96;">💬 매크로 관리</div>
+                <div id="macro-edit-list" style="margin-bottom:10px;"></div>
+                <button onclick="addGlobalMacro()" style="width:100%; padding:8px; background:#00b4d8; color:white; border:none; border-radius:4px; font-weight:bold; cursor:pointer;">+ 새 매크로 추가</button>
+            </div>
         </div>
 
         <div id="patient-panel" class="no-print">
             <div style="font-weight:bold; margin-bottom:10px; color:#005b96;">📋 환자 처방 관리</div>
             <textarea id="pMemo" class="secret-memo" placeholder="📝 [치료사 전용] 환자 상태나 인수인계 메모 (인쇄 제외)"></textarea>
             <button class="save-routine-btn" style="width:100%; padding:12px; background:var(--save-teal); color:white; border:none; border-radius:8px; font-weight:bold; cursor:pointer; margin-bottom:10px;" onclick="savePatientRoutine()">💾 현재 처방 및 메모 저장</button>
+            
+            <input type="text" id="searchPatientIn" placeholder="🔍 이름/차트번호 검색..." oninput="searchPatients()" class="search-box" style="background:#fff;">
+            
             <div style="font-size: 13px; font-weight: bold; margin-bottom: 10px; color: #555;">나의 환자 목록</div>
             <div id="patient-list-container"></div>
         </div>
