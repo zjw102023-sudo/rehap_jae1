@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>재활 시스템 - 폴더 닫힘 완벽 해결</title>
+    <title>재활 시스템 - 50:50 비율 최적화</title>
     
     <style id="dynamic-print-style">
         @media print { @page { size: landscape; margin: 0; } }
@@ -259,7 +259,6 @@
             document.getElementById('pIn').value = pData.pName; document.getElementById('chartIn').value = pData.chartID; document.getElementById('pMemo').value = pData.memo || ""; 
             window.selectedExercises = [...pData.exercises]; 
             
-            // 🚨 화면 전체 리셋 안 하고 체크박스만 동기화 🚨
             document.querySelectorAll('.custom-checkbox').forEach(cb => {
                 const j = cb.getAttribute('data-joint'); const n = cb.getAttribute('data-name');
                 cb.checked = window.selectedExercises.some(ex => ex.id === `${j}_${n}`);
@@ -288,7 +287,6 @@
             window.exerciseDescriptions[id] = text; await CustomModal.alert("공용 데이터(원본)가 영구적으로 업데이트되었습니다.");
         };
 
-        // 구조가 바뀔 때(추가/삭제)는 renderControls()를 부르되, 폴더 상태를 강제로 넘겨서 열리게 유지함
         window.addCategory = async function() { 
             syncDOMtoData(); const n = await CustomModal.prompt("추가할 대분류(부위) 명을 입력하세요:"); 
             if(n && !window.exerciseData[n]) { window.exerciseData[n] = {"스트레칭": [], "운동": []}; renderControls(n); } 
@@ -365,14 +363,12 @@
             addExerciseToSelection(joint, name, insertIndex);
         };
 
-        // 🚨 핵심 수정: 항목 추가/제거 시 renderControls()를 호출하지 않고 DOM 체크박스만 제어 🚨
         function addExerciseToSelection(joint, name, insertIndex) {
             const id = `${joint}_${name}`; const existingIndex = window.selectedExercises.findIndex(ex => ex.id === id);
             let customDesc = window.exerciseDescriptions[id] || "방법을 입력하세요.";
             if (existingIndex !== -1) { customDesc = window.selectedExercises[existingIndex].customDesc; window.selectedExercises.splice(existingIndex, 1); if (existingIndex < insertIndex) insertIndex--; }
             const newItem = { joint: joint, name: name, id: id, customDesc: customDesc }; window.selectedExercises.splice(insertIndex, 0, newItem);
             
-            // DOM에서 체크박스 체크 처리 (메뉴 닫힘 방지)
             const cb = document.querySelector(`input[type="checkbox"][data-joint="${joint}"][data-name="${name}"]`);
             if (cb) cb.checked = true;
             
@@ -385,18 +381,17 @@
                 if(!window.selectedExercises.some(ex => ex.id === id)) { addExerciseToSelection(j, n, window.selectedExercises.length); } 
             } else { 
                 window.selectedExercises = window.selectedExercises.filter(ex => ex.id !== id); 
-                renderPreview(); // 🚨 renderControls() 제거!
+                renderPreview(); 
             }
         }
 
         window.removeExerciseFromPreview = function(id) { 
             window.selectedExercises = window.selectedExercises.filter(ex => ex.id !== id); 
-            // 🚨 DOM에서 체크박스 해제 처리 (메뉴 닫힘 방지)
             const parts = id.split('_');
             const cb = document.querySelector(`input[type="checkbox"][data-joint="${parts[0]}"][data-name="${parts[1]}"]`);
             if (cb) cb.checked = false;
             
-            renderPreview(); // 🚨 renderControls() 제거!
+            renderPreview(); 
         };
 
         window.setVideoLink = async function(id) { const currentUrl = window.exerciseVideos[id] || ""; const url = await CustomModal.prompt("유튜브(영상) 주소:", currentUrl); if (url !== null) { try { await setDoc(doc(db, "settings", "exerciseVideos"), { [id]: url }, { merge: true }); window.exerciseVideos[id] = url; renderPreview(); } catch(e) { await CustomModal.alert("저장 실패!"); } } };
@@ -533,7 +528,6 @@
             e.currentTarget.parentElement.classList.toggle('open');
         }
 
-        // 🚨 구조 변경(추가/삭제) 시에만 호출되는 렌더링 함수 🚨
         function renderControls(forceOpenCat = null, forceOpenFold = null) {
             const c = document.getElementById('controls');
             if(!c) return;
@@ -817,6 +811,7 @@
         .empty-state h2 { margin: 0 0 10px 0; color: #334155; font-size: 22px; }
         .empty-state p { margin: 0; font-size: 15px; }
 
+        /* 🌟 CSS 핵심 수정: 50:50 비율 적용 🌟 */
         .a4-page { background: var(--surface); margin-bottom: 30px; padding: 8mm 12mm; box-sizing: border-box; display: flex; flex-direction: column; position: relative; box-shadow: 0 10px 25px rgba(0,0,0,0.08); width: 297mm; height: 210mm; transition: border 0.2s, transform 0.2s; border: 4px solid transparent; border-radius: 8px;}
         .a4-page.drag-over-top { border-top: 4px solid var(--primary-medical); transform: translateY(5px); }
         .a4-page.drag-over-bottom { border-bottom: 4px solid var(--primary-medical); transform: translateY(-5px); }
@@ -828,7 +823,9 @@
         .page-delete-btn:hover { background: var(--danger-red); color: white; transform: scale(1.1); }
         
         .page-content { flex: 1; display: flex; gap: 20px; overflow: hidden; margin-bottom: 5mm;}
-        .img-wrap { flex: 65; border: 1px solid var(--border-soft); border-radius: 12px; overflow: hidden; display: flex; align-items: center; justify-content: center; background: #f8fafc; position: relative; outline: none; transition: 0.2s;}
+        
+        /* 🚨 수정됨: flex: 50으로 반반 비율 🚨 */
+        .img-wrap { flex: 50; border: 1px solid var(--border-soft); border-radius: 12px; overflow: hidden; display: flex; align-items: center; justify-content: center; background: #f8fafc; position: relative; outline: none; transition: 0.2s;}
         .img-wrap:focus { border-color: var(--primary-medical); box-shadow: 0 0 0 4px rgba(0,91,150,0.1); }
         
         .vertical-img-container { display: flex; flex-direction: column; width: 100%; height: 100%; }
@@ -838,7 +835,9 @@
         
         .img-idx-badge { position: absolute; bottom: 10px; right: 10px; background: rgba(15,23,42,0.7); color: #fff; padding: 4px 10px; border-radius: 12px; font-size: 13px; font-weight: bold; backdrop-filter: blur(2px);}
         
-        .exercise-details { flex: 35; display: flex; flex-direction: column; gap: 10px; position: relative; }
+        /* 🚨 수정됨: flex: 50으로 반반 비율 🚨 */
+        .exercise-details { flex: 50; display: flex; flex-direction: column; gap: 10px; position: relative; }
+        
         .exercise-title-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
         .exercise-title-row h3 { margin: 0; font-size: 22pt; color: #1e293b; line-height: 1.2; flex: 1; word-break: keep-all; pointer-events: none;}
         .save-btn { padding: 6px 14px; background: #d1fae5; color: #047857; border: 1px solid #34d399; border-radius: 6px; font-size: 13px; font-weight: bold; cursor: pointer; transition: 0.2s;}
