@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>재활 시스템 - 실무 최적화 (검색, 페이징, 매크로)</title>
+    <title>재활 시스템 - 고급 디자인 & UX 적용</title>
     
     <style id="dynamic-print-style">
         @media print { @page { size: landscape; margin: 0; } }
@@ -30,16 +30,63 @@
         window.exerciseImages = {}; 
         window.exerciseVideos = {}; 
         window.patientDB = {}; 
-        window.macroList = ["10회 x 3세트 진행합니다.", "15회 x 3세트 진행합니다.", "🚨 주의: 통증 발생 시 즉시 중단하세요."]; // 🌟 전역 매크로 배열
+        window.macroList = ["10회 x 3세트 진행합니다.", "15회 x 3세트 진행합니다.", "🚨 주의: 통증 발생 시 즉시 중단하세요."]; 
         window.isAdminMode = false; 
         window.selectedExercises = []; 
         window.keyMigrations = {}; 
         window.currentTab = 'prescription';
 
+        // 🌟 1번 적용: 고급 커스텀 모달(팝업) 시스템 🌟
+        window.CustomModal = {
+            show: function(type, msg, defaultVal = '') {
+                return new Promise((resolve) => {
+                    const overlay = document.getElementById('custom-modal-overlay');
+                    const input = document.getElementById('modal-input');
+                    const btnOk = document.getElementById('modal-btn-ok');
+                    const btnCancel = document.getElementById('modal-btn-cancel');
+                    
+                    document.getElementById('modal-msg').innerHTML = msg;
+                    overlay.style.display = 'flex';
+                    
+                    // 약간의 딜레이로 애니메이션 효과
+                    setTimeout(() => overlay.style.opacity = '1', 10); 
+
+                    if(type === 'prompt') { 
+                        input.style.display = 'block'; 
+                        input.value = defaultVal; 
+                        input.focus(); 
+                    } else { 
+                        input.style.display = 'none'; 
+                    }
+
+                    if(type === 'alert') { 
+                        btnCancel.style.display = 'none'; 
+                    } else { 
+                        btnCancel.style.display = 'block'; 
+                    }
+
+                    const closeAndResolve = (val) => {
+                        overlay.style.opacity = '0';
+                        setTimeout(() => { overlay.style.display = 'none'; resolve(val); }, 200);
+                    };
+
+                    btnOk.onclick = () => closeAndResolve(type === 'prompt' ? input.value.trim() : true);
+                    btnCancel.onclick = () => closeAndResolve(type === 'prompt' ? null : false);
+                    input.onkeypress = (e) => { if(e.key === 'Enter') btnOk.click(); };
+                });
+            },
+            alert: (msg) => window.CustomModal.show('alert', msg),
+            confirm: (msg) => window.CustomModal.show('confirm', msg),
+            prompt: (msg, def) => window.CustomModal.show('prompt', msg, def)
+        };
+
         window.onload = async function() {
             document.getElementById('global-loader').style.display = 'flex';
             await loadAllData(); 
-            document.getElementById('global-loader').style.display = 'none';
+            setTimeout(() => {
+                document.getElementById('global-loader').style.opacity = '0';
+                setTimeout(() => document.getElementById('global-loader').style.display = 'none', 300);
+            }, 500);
 
             const savedName = sessionStorage.getItem('loggedInName');
             const loginID = sessionStorage.getItem('loggedInID');
@@ -49,11 +96,8 @@
                 document.getElementById('bottom-nav').style.display = 'flex';
                 document.querySelector('.top-right-controls').style.display = 'flex';
                 document.getElementById('main-app-container').style.display = 'flex';
-                
                 document.getElementById('logged-in-user').innerText = savedName;
-                if (loginID === '0000') {
-                    document.getElementById('tab-admin').style.display = 'flex';
-                }
+                if (loginID === '0000') document.getElementById('tab-admin').style.display = 'flex';
             } else {
                 document.getElementById('login-overlay').style.display = 'flex';
             }
@@ -92,24 +136,21 @@
                 const vidSnap = await getDoc(doc(db, "settings", "exerciseVideos"));
                 if (vidSnap.exists()) window.exerciseVideos = vidSnap.data();
 
-                // 🌟 매크로 데이터 로드
                 const macSnap = await getDoc(doc(db, "settings", "macros"));
-                if (macSnap.exists() && macSnap.data().list) {
-                    window.macroList = macSnap.data().list;
-                }
+                if (macSnap.exists() && macSnap.data().list) window.macroList = macSnap.data().list;
 
             } catch (e) { console.error(e); }
             renderControls(); renderPatientList(); renderPreview(); renderMacroList();
         }
 
-        window.attemptLogin = function() {
+        window.attemptLogin = async function() {
             const idInput = document.getElementById('emp-id').value.trim();
             const pwInput = document.getElementById('emp-pw').value.trim();
             if (window.therapistDB[idInput] && window.therapistDB[idInput].pw === pwInput) {
                 sessionStorage.setItem('loggedInID', idInput);
                 sessionStorage.setItem('loggedInName', window.therapistDB[idInput].name);
                 location.reload(); 
-            } else { alert("사원번호 또는 비밀번호가 일치하지 않습니다."); }
+            } else { await CustomModal.alert("사원번호 또는 비밀번호가 일치하지 않습니다."); }
         };
 
         window.logout = function() { sessionStorage.clear(); location.reload(); };
@@ -133,7 +174,7 @@
                     window.isAdminMode = true;
                     document.getElementById('patient-panel').style.display = 'none';
                     document.getElementById('sidebar-patient-inputs').style.display = 'none';
-                    document.getElementById('macro-management-section').style.display = 'block'; // 매크로 관리 패널 활성화
+                    document.getElementById('macro-management-section').style.display = 'block'; 
                     document.getElementById('preview-area').style.right = '0'; 
                 } else {
                     window.isAdminMode = false;
@@ -173,29 +214,31 @@
         }
 
         window.addTherapist = async function() {
-            const id = prompt("사원번호:"); if (!id) return;
-            if (window.therapistDB[id]) return alert("이미 존재하는 사원번호입니다.");
-            const name = prompt("이름:"); if (!name) return;
-            const pw = prompt("초기 비밀번호 설정:"); if (!pw) return;
+            const id = await CustomModal.prompt("새로운 사원번호를 입력하세요:"); if (!id) return;
+            if (window.therapistDB[id]) return await CustomModal.alert("이미 존재하는 사원번호입니다.");
+            const name = await CustomModal.prompt("치료사 이름을 입력하세요:"); if (!name) return;
+            const pw = await CustomModal.prompt("초기 비밀번호를 설정하세요:"); if (!pw) return;
             window.therapistDB[id] = { name: name, pw: pw };
             await setDoc(doc(db, "settings", "therapists"), window.therapistDB); renderTherapistList();
         };
 
         window.resetTherapistPw = async function(id) {
-            const newPw = prompt(`[${window.therapistDB[id].name}] 치료사님의 새 비밀번호를 입력하세요:`);
-            if (newPw) { window.therapistDB[id].pw = newPw; await setDoc(doc(db, "settings", "therapists"), window.therapistDB); alert("비밀번호가 성공적으로 변경되었습니다."); }
+            const newPw = await CustomModal.prompt(`[${window.therapistDB[id].name}] 치료사님의 새 비밀번호를 입력하세요:`);
+            if (newPw) { window.therapistDB[id].pw = newPw; await setDoc(doc(db, "settings", "therapists"), window.therapistDB); await CustomModal.alert("비밀번호가 성공적으로 변경되었습니다."); }
         };
 
         window.deleteTherapist = async function(id) {
-            if (id === '0000') return alert("삭제 불가");
-            if (confirm("삭제하시겠습니까?")) { delete window.therapistDB[id]; await setDoc(doc(db, "settings", "therapists"), window.therapistDB); renderTherapistList(); }
+            if (id === '0000') return await CustomModal.alert("최고관리자는 삭제할 수 없습니다.");
+            if (await CustomModal.confirm(`정말 [${window.therapistDB[id].name}] 치료사를 삭제하시겠습니까?`)) { 
+                delete window.therapistDB[id]; await setDoc(doc(db, "settings", "therapists"), window.therapistDB); renderTherapistList(); 
+            }
         };
 
         function renderTherapistList() {
             const listDiv = document.getElementById('t-list'); listDiv.innerHTML = "";
             for (const [id, data] of Object.entries(window.therapistDB)) { 
                 if (id !== '0000') {
-                    listDiv.innerHTML += `<div class="t-item"><span>${id} : ${data.name}</span> <div><button onclick="resetTherapistPw('${id}')" style="background:#ffc107; color:#000; margin-right:5px;">PW변경</button><button onclick="deleteTherapist('${id}')">삭제</button></div></div>`; 
+                    listDiv.innerHTML += `<div class="t-item"><span><b>${id}</b> : ${data.name}</span> <div><button onclick="resetTherapistPw('${id}')" class="btn-warning">PW변경</button><button onclick="deleteTherapist('${id}')" class="btn-danger">삭제</button></div></div>`; 
                 }
             }
         }
@@ -214,11 +257,13 @@
         window.savePatientRoutine = async function() {
             const pName = document.getElementById('pIn').value.trim(); const chartID = document.getElementById('chartIn').value.trim();
             const pMemo = document.getElementById('pMemo').value.trim(); const loggedInID = sessionStorage.getItem('loggedInID');
-            if (!pName || !chartID) return alert("성함과 병록번호 필수!"); if (window.selectedExercises.length === 0) return alert("운동 선택 필수!");
+            if (!pName || !chartID) return await CustomModal.alert("환자 성함과 병록번호를 입력해주세요."); 
+            if (window.selectedExercises.length === 0) return await CustomModal.alert("처방할 운동을 1개 이상 선택해주세요.");
+            
             const routineData = window.selectedExercises.map(ex => { const descBox = document.getElementById(`desc_${ex.id}`); return { ...ex, customDesc: descBox ? descBox.innerHTML : "" }; });
             const saveKey = `${chartID}_${pName}_${Date.now()}`; 
             window.patientDB[saveKey] = { chartID, pName, memo: pMemo, exercises: routineData, therapistName: sessionStorage.getItem('loggedInName'), therapistID: loggedInID, date: new Date().toLocaleDateString() + " " + new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) };
-            try { await setDoc(doc(db, "settings", "patients"), window.patientDB); alert("저장되었습니다."); renderPatientList(); } catch (e) { alert("실패!"); }
+            try { await setDoc(doc(db, "settings", "patients"), window.patientDB); await CustomModal.alert("처방이 성공적으로 저장되었습니다."); renderPatientList(); } catch (e) { await CustomModal.alert("저장 실패!"); }
         };
 
         window.loadPatientRoutine = function(key) {
@@ -232,49 +277,37 @@
             window.selectedExercises = []; renderControls(); renderPreview();  
         };
 
-        window.resetSelection = function() {
+        window.resetSelection = async function() {
             if (window.selectedExercises.length === 0) return;
-            if (confirm("체크된 모든 운동을 해제하시겠습니까?")) { window.selectedExercises = []; renderControls(); renderPreview(); }
+            if (await CustomModal.confirm("현재 작성 중인 모든 선택을 초기화하시겠습니까?")) { window.selectedExercises = []; renderControls(); renderPreview(); }
         };
 
         window.saveMasterDescription = async function(id, text) {
             await setDoc(doc(db, "settings", "exerciseDescriptions"), { [id]: text }, { merge: true });
-            window.exerciseDescriptions[id] = text; alert("공용 데이터(원본)가 업데이트되었습니다.");
+            window.exerciseDescriptions[id] = text; await CustomModal.alert("공용 데이터(원본)가 영구적으로 업데이트되었습니다.");
         };
 
-        window.addCategory = function() { syncDOMtoData(); const n = prompt("부위명:"); if(n && !window.exerciseData[n]) { window.exerciseData[n] = {"스트레칭": [], "운동": []}; renderControls(); } }
-        window.deleteCategory = function(btn) { syncDOMtoData(); const catTitle = btn.closest('.category-box').querySelector('.category-title-text').innerText.trim(); if(confirm(`[${catTitle}] 삭제?`)) { delete window.exerciseData[catTitle]; removeDeletedFromSelection(); renderControls(); renderPreview(); } }
-        window.addFolder = function(btn) { syncDOMtoData(); const catTitle = btn.closest('.category-box').querySelector('.category-title-text').innerText.trim(); const f = prompt(`새 폴더명:`); if (f && !window.exerciseData[catTitle][f]) { window.exerciseData[catTitle][f] = []; renderControls(); } }
-        window.deleteFolder = function(btn) { syncDOMtoData(); const catTitle = btn.closest('.category-box').querySelector('.category-title-text').innerText.trim(); const fTitle = btn.closest('.folder-box').querySelector('.folder-title-text').innerText.trim(); if(confirm(`삭제?`)) { delete window.exerciseData[catTitle][fTitle]; removeDeletedFromSelection(); renderControls(); renderPreview(); } }
-        window.addExercise = function(btn) { syncDOMtoData(); const catTitle = btn.closest('.category-box').querySelector('.category-title-text').innerText.trim(); const fTitle = btn.closest('.folder-box').querySelector('.folder-title-text').innerText.trim(); const n = prompt(`운동명:`); if(n) { window.exerciseData[catTitle][fTitle].push(n); renderControls(); } }
+        window.addCategory = async function() { syncDOMtoData(); const n = await CustomModal.prompt("추가할 대분류(부위) 명을 입력하세요:"); if(n && !window.exerciseData[n]) { window.exerciseData[n] = {"스트레칭": [], "운동": []}; renderControls(); } }
+        window.deleteCategory = async function(btn) { syncDOMtoData(); const catTitle = btn.closest('.category-box').querySelector('.category-title-text').innerText.trim(); if(await CustomModal.confirm(`정말 [${catTitle}] 대분류를 통째로 삭제하시겠습니까?`)) { delete window.exerciseData[catTitle]; removeDeletedFromSelection(); renderControls(); renderPreview(); } }
+        window.addFolder = async function(btn, ev) { if(ev) ev.stopPropagation(); syncDOMtoData(); const catTitle = btn.closest('.category-box').querySelector('.category-title-text').innerText.trim(); const f = await CustomModal.prompt(`[${catTitle}] 하위에 추가할 새 폴더명을 입력하세요:`); if (f && !window.exerciseData[catTitle][f]) { window.exerciseData[catTitle][f] = []; renderControls(); } }
+        window.deleteFolder = async function(btn, ev) { if(ev) ev.stopPropagation(); syncDOMtoData(); const catTitle = btn.closest('.category-box').querySelector('.category-title-text').innerText.trim(); const fTitle = btn.closest('.folder-box').querySelector('.folder-title-text').innerText.trim(); if(await CustomModal.confirm(`정말 [${fTitle}] 폴더와 내부 운동을 모두 삭제하시겠습니까?`)) { delete window.exerciseData[catTitle][fTitle]; removeDeletedFromSelection(); renderControls(); renderPreview(); } }
+        window.addExercise = async function(btn, ev) { if(ev) ev.stopPropagation(); syncDOMtoData(); const catTitle = btn.closest('.category-box').querySelector('.category-title-text').innerText.trim(); const fTitle = btn.closest('.folder-box').querySelector('.folder-title-text').innerText.trim(); const n = await CustomModal.prompt(`[${fTitle}] 폴더에 추가할 운동명을 입력하세요:`); if(n) { window.exerciseData[catTitle][fTitle].push(n); renderControls(); } }
         
-        // 🌟 전역 매크로 추가/삭제 로직 🌟
         window.addGlobalMacro = async function() {
-            const text = prompt("새로운 매크로 문구를 입력하세요:");
-            if(text) {
-                window.macroList.push(text);
-                await setDoc(doc(db, "settings", "macros"), { list: window.macroList });
-                renderMacroList(); renderPreview();
-            }
+            const text = await CustomModal.prompt("새로운 매크로 문구를 입력하세요:");
+            if(text) { window.macroList.push(text); await setDoc(doc(db, "settings", "macros"), { list: window.macroList }); renderMacroList(); renderPreview(); }
         };
         window.deleteGlobalMacro = async function(idx) {
-            if(confirm("이 매크로를 삭제하시겠습니까?")) {
-                window.macroList.splice(idx, 1);
-                await setDoc(doc(db, "settings", "macros"), { list: window.macroList });
-                renderMacroList(); renderPreview();
-            }
+            if(await CustomModal.confirm("이 매크로를 삭제하시겠습니까?")) { window.macroList.splice(idx, 1); await setDoc(doc(db, "settings", "macros"), { list: window.macroList }); renderMacroList(); renderPreview(); }
         };
         function renderMacroList() {
-            const container = document.getElementById('macro-edit-list');
-            if(!container) return;
-            container.innerHTML = "";
+            const container = document.getElementById('macro-edit-list'); if(!container) return; container.innerHTML = "";
             window.macroList.forEach((m, idx) => {
                 container.innerHTML += `
-                    <div style="display:flex; justify-content:space-between; align-items:center; background:#f8faff; border:1px solid #cce5ff; padding:8px; margin-bottom:5px; border-radius:4px; font-size:12px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; background:#f8faff; border:1px solid #cce5ff; padding:10px; margin-bottom:5px; border-radius:6px; font-size:13px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
                         <span style="flex:1;">${m}</span>
-                        <button onclick="deleteGlobalMacro(${idx})" style="background:none; border:none; color:#e63946; cursor:pointer; font-weight:bold;">❌</button>
-                    </div>
-                `;
+                        <button onclick="deleteGlobalMacro(${idx})" class="btn-icon" style="color:#e63946;">❌</button>
+                    </div>`;
             });
         }
 
@@ -284,20 +317,18 @@
             });
         }
 
-        window.deleteExercise = function(btn, exName) { 
-            syncDOMtoData(); const catTitle = btn.closest('.category-box').querySelector('.category-title-text').innerText.trim(); const fTitle = btn.closest('.folder-box').querySelector('.folder-title-text').innerText.trim(); 
-            window.exerciseData[catTitle][fTitle] = window.exerciseData[catTitle][fTitle].filter(e => e !== exName); removeDeletedFromSelection(); renderControls(); renderPreview(); 
+        window.deleteExercise = async function(btn, exName, ev) { 
+            if(ev) ev.stopPropagation();
+            if(await CustomModal.confirm(`정말 '${exName}' 운동을 삭제하시겠습니까?`)) {
+                syncDOMtoData(); const catTitle = btn.closest('.category-box').querySelector('.category-title-text').innerText.trim(); const fTitle = btn.closest('.folder-box').querySelector('.folder-title-text').innerText.trim(); 
+                window.exerciseData[catTitle][fTitle] = window.exerciseData[catTitle][fTitle].filter(e => e !== exName); removeDeletedFromSelection(); renderControls(); renderPreview(); 
+            }
         }
 
-        // 드래그 앤 드롭 로직
-        window.dragStart = function(e, joint, name) {
-            e.dataTransfer.setData('joint', joint); e.dataTransfer.setData('name', name);
-        };
+        // 드래그 앤 드롭
+        window.dragStart = function(e, joint, name) { e.dataTransfer.setData('joint', joint); e.dataTransfer.setData('name', name); };
         window.allowDrop = function(e) { e.preventDefault(); };
-        window.dropEmpty = function(e) {
-            e.preventDefault(); const joint = e.dataTransfer.getData('joint'); const name = e.dataTransfer.getData('name');
-            if (joint && name) addExerciseToSelection(joint, name, window.selectedExercises.length);
-        };
+        window.dropEmpty = function(e) { e.preventDefault(); const joint = e.dataTransfer.getData('joint'); const name = e.dataTransfer.getData('name'); if (joint && name) addExerciseToSelection(joint, name, window.selectedExercises.length); };
         window.handleDragOverPage = function(e) {
             e.preventDefault(); const rect = e.currentTarget.getBoundingClientRect(); const isTopHalf = (e.clientY - rect.top) < (rect.height / 2);
             if(isTopHalf) { e.currentTarget.classList.add('drag-over-top'); e.currentTarget.classList.remove('drag-over-bottom'); } 
@@ -328,7 +359,7 @@
         }
 
         window.removeExerciseFromPreview = function(id) { window.selectedExercises = window.selectedExercises.filter(ex => ex.id !== id); renderControls(); renderPreview(); };
-        window.setVideoLink = async function(id) { const currentUrl = window.exerciseVideos[id] || ""; const url = prompt("유튜브(영상) 주소:", currentUrl); if (url !== null) { try { await setDoc(doc(db, "settings", "exerciseVideos"), { [id]: url }, { merge: true }); window.exerciseVideos[id] = url; renderPreview(); } catch(e) { alert("저장 실패!"); } } };
+        window.setVideoLink = async function(id) { const currentUrl = window.exerciseVideos[id] || ""; const url = await CustomModal.prompt("유튜브(영상) 주소:", currentUrl); if (url !== null) { try { await setDoc(doc(db, "settings", "exerciseVideos"), { [id]: url }, { merge: true }); window.exerciseVideos[id] = url; renderPreview(); } catch(e) { await CustomModal.alert("저장 실패!"); } } };
         window.addMacro = function(id, text) { const descBox = document.getElementById(`desc_${id}`); descBox.innerHTML += (descBox.innerHTML.trim() === '' ? '' : '<br>') + `▶ ${text}`; };
 
         window.processAndSaveImage = function(file, id) {
@@ -341,14 +372,21 @@
                     canvas.width = w; canvas.height = h; canvas.getContext('2d').drawImage(img, 0, 0, w, h);
                     const base64 = canvas.toDataURL('image/jpeg', 0.85); 
                     let imgs = window.exerciseImages[id] || []; if (typeof imgs === 'string') imgs = [imgs]; imgs.push(base64);
-                    try { await setDoc(doc(db, "settings", "exerciseImages"), { [id]: imgs }, { merge: true }); window.exerciseImages[id] = imgs; renderPreview(); } catch (e) { alert("⚠️ 저장 실패! 데이터베이스 용량(1MB) 초과"); }
+                    try { await setDoc(doc(db, "settings", "exerciseImages"), { [id]: imgs }, { merge: true }); window.exerciseImages[id] = imgs; renderPreview(); } catch (e) { await CustomModal.alert("⚠️ 저장 실패! 데이터베이스 용량 초과"); }
                 }
             };
         }
-        window.clearImages = async function(id) { if (confirm("전체 삭제?")) { await setDoc(doc(db, "settings", "exerciseImages"), { [id]: [] }, { merge: true }); window.exerciseImages[id] = []; renderPreview(); } }
+        window.clearImages = async function(id) { if (await CustomModal.confirm("현재 운동의 사진을 모두 삭제하시겠습니까?")) { await setDoc(doc(db, "settings", "exerciseImages"), { [id]: [] }, { merge: true }); window.exerciseImages[id] = []; renderPreview(); } }
         window.handlePaste = function(e, id) { if(!window.isAdminMode) return; const items = (e.clipboardData || e.originalEvent.clipboardData).items; for (let i in items) { if (items[i].kind === 'file' && items[i].type.startsWith('image/')) { processAndSaveImage(items[i].getAsFile(), id); break; } } }
 
-        // 🌟 환자 목록 페이징(접기) 기능 🌟
+        window.deletePatientRoutine = async function(key) {
+            if (await CustomModal.confirm("이 환자의 해당 방문 기록을 완전히 삭제하시겠습니까?")) {
+                delete window.patientDB[key];
+                await setDoc(doc(db, "settings", "patients"), window.patientDB);
+                renderPatientList();
+            }
+        };
+
         window.renderPatientList = function() {
             const pListDiv = document.getElementById('patient-list-container'); pListDiv.innerHTML = "";
             const currentID = sessionStorage.getItem('loggedInID');
@@ -357,10 +395,7 @@
 
             Object.entries(window.patientDB).forEach(([key, d]) => {
                 if (currentID !== '0000' && d.therapistID !== currentID) return;
-                
-                // 🌟 검색 필터 적용
                 if (query && !d.pName.toLowerCase().includes(query) && !d.chartID.toLowerCase().includes(query)) return;
-
                 const pKey = `${d.chartID}_${d.pName}`;
                 if (!grouped[pKey]) grouped[pKey] = [];
                 grouped[pKey].push({ key, ...d });
@@ -369,16 +404,14 @@
             for (const [pKey, records] of Object.entries(grouped)) {
                 const sortedRecords = records.sort((a,b) => b.key.split('_')[2] - a.key.split('_')[2]); 
                 const pName = sortedRecords[0].pName; const chartID = sortedRecords[0].chartID;
-                
                 const groupDiv = document.createElement('div'); groupDiv.className = 'patient-group';
                 
-                // 🌟 과거 기록 분리 로직 (최대 3개만 기본 노출)
                 const recentRecords = sortedRecords.slice(0, 3);
                 const olderRecords = sortedRecords.slice(3);
 
                 let listHtml = recentRecords.map(r => `
                     <div class="visit-record">
-                        <div class="visit-date">📅 ${r.date} ${r.memo ? '<span style="color:#005b96;font-weight:bold;">[메모있음]</span>' : ''}</div>
+                        <div class="visit-date">📅 ${r.date} ${r.memo ? '<span style="color:var(--primary-medical);font-weight:bold;">[메모]</span>' : ''}</div>
                         <div class="p-card-actions">
                             <button class="p-btn-load" onclick="loadPatientRoutine('${r.key}')">불러오기</button>
                             <button class="p-btn-del" onclick="deletePatientRoutine('${r.key}')">삭제</button>
@@ -388,7 +421,7 @@
                 if(olderRecords.length > 0) {
                     listHtml += `
                         <button class="show-more-btn" onclick="this.nextElementSibling.style.display='block'; this.style.display='none';">⬇ 이전 방문기록 ${olderRecords.length}개 더보기</button>
-                        <div style="display:none; border-top:1px dashed #ddd; margin-top:5px; padding-top:5px;">
+                        <div style="display:none; border-top:1px dashed #e0e6ed; margin-top:5px; padding-top:5px;">
                             ${olderRecords.map(r => `
                             <div class="visit-record">
                                 <div class="visit-date">📅 ${r.date}</div>
@@ -403,8 +436,8 @@
 
                 groupDiv.innerHTML = `
                     <div class="patient-group-title">
-                        <div onclick="this.parentElement.nextElementSibling.classList.toggle('active')" style="flex:1; cursor:pointer;"><strong>👤 ${pName}</strong> <span style="font-size:11px;">(#${chartID})</span></div>
-                        <button class="new-routine-btn" onclick="startNewRoutine('${pName}', '${chartID}')" title="새 처방 시작">➕</button>
+                        <div onclick="this.parentElement.nextElementSibling.classList.toggle('active')" style="flex:1; cursor:pointer; font-size:14px;"><strong>👤 ${pName}</strong> <span style="font-size:11px; color:#888;">(#${chartID})</span></div>
+                        <button class="btn-icon add-routine-btn" onclick="startNewRoutine('${pName}', '${chartID}')" title="새 처방 시작">➕</button>
                     </div>
                     <div class="patient-group-content">${listHtml}</div>`;
                 pListDiv.appendChild(groupDiv);
@@ -413,17 +446,28 @@
 
         window.searchPatients = function() { renderPatientList(); };
 
+        // 🌟 2번 적용: 아코디언 메뉴 동적 열림 (검색 시 자동 열림) 🌟
         window.filterExercises = function() {
             const keyword = document.getElementById('searchEx').value.toLowerCase().trim();
             if (keyword === "") {
                 document.querySelectorAll('.exercise-item').forEach(item => item.style.display = 'flex');
-                document.querySelectorAll('.folder-box').forEach(box => box.style.display = 'block');
-                document.querySelectorAll('.category-box').forEach(box => box.style.display = 'block');
+                document.querySelectorAll('.folder-box, .category-box').forEach(box => {
+                    box.style.display = 'block';
+                    box.classList.remove('open'); // 검색 취소 시 다 접음
+                });
                 return;
             }
             document.querySelectorAll('.exercise-item').forEach(item => { item.style.display = item.innerText.toLowerCase().includes(keyword) ? 'flex' : 'none'; });
-            document.querySelectorAll('.folder-box').forEach(box => { const visible = Array.from(box.querySelectorAll('.exercise-item')).some(item => item.style.display !== 'none'); box.style.display = visible ? 'block' : 'none'; });
-            document.querySelectorAll('.category-box').forEach(box => { const visible = Array.from(box.querySelectorAll('.folder-box')).some(f => f.style.display !== 'none'); box.style.display = visible ? 'block' : 'none'; });
+            document.querySelectorAll('.folder-box').forEach(box => { 
+                const visible = Array.from(box.querySelectorAll('.exercise-item')).some(item => item.style.display !== 'none'); 
+                box.style.display = visible ? 'block' : 'none'; 
+                if(visible) box.classList.add('open'); // 일치하는 항목이 있으면 폴더 염
+            });
+            document.querySelectorAll('.category-box').forEach(box => { 
+                const visible = Array.from(box.querySelectorAll('.folder-box')).some(f => f.style.display !== 'none'); 
+                box.style.display = visible ? 'block' : 'none'; 
+                if(visible) box.classList.add('open'); // 일치하는 폴더가 있으면 대분류 염
+            });
         };
 
         function syncDOMtoData() {
@@ -447,6 +491,12 @@
             }); window.exerciseData = newData;
         }
 
+        window.toggleAccordion = function(e) {
+            // 수정 모드일 때 텍스트 클릭 시 펼쳐지는 것 방지
+            if(e.target.tagName.toLowerCase() === 'span' && window.isAdminMode) return;
+            e.currentTarget.parentElement.classList.toggle('open');
+        }
+
         function renderControls() {
             const c = document.getElementById('controls'); c.innerHTML = "";
             const fixedOrder = ["목", "어깨", "팔꿈치", "손목", "허리", "고관절", "무릎", "발목"];
@@ -458,25 +508,53 @@
             for (const joint of currentCategories) {
                 const folders = window.exerciseData[joint];
                 const div = document.createElement('div'); div.className = 'category-box';
-                div.innerHTML = `<div class="category-title"><span class="category-title-text" contenteditable="${window.isAdminMode}" data-old-key="${joint}" style="${window.isAdminMode ? 'background:#fff; border:1px dashed #aaa; padding:0 4px; border-radius:4px;' : ''}">${joint}</span>${window.isAdminMode ? `<div><button onclick="addFolder(this)">📁+</button> <button onclick="deleteCategory(this)">🗑️</button></div>` : ''}</div>`;
+                
+                // 🌟 2번 아코디언 헤더 적용 🌟
+                div.innerHTML = `
+                    <div class="accordion-header category-title" onclick="toggleAccordion(event)">
+                        <div>
+                            <span class="toggle-icon">▶</span>
+                            <span class="category-title-text" contenteditable="${window.isAdminMode}" data-old-key="${joint}" style="${window.isAdminMode ? 'background:#fff; border:1px dashed #aaa; padding:2px 4px; border-radius:4px;' : ''}" onclick="if(window.isAdminMode) event.stopPropagation();">${joint}</span>
+                        </div>
+                        ${window.isAdminMode ? `<div><button onclick="addFolder(this, event)" class="btn-icon">📁+</button> <button onclick="deleteCategory(this)" class="btn-icon btn-danger-icon">🗑️</button></div>` : ''}
+                    </div>
+                    <div class="accordion-content category-content"></div>
+                `;
+                
+                const catContent = div.querySelector('.category-content');
+
                 for (const [folder, exercises] of Object.entries(window.exerciseData[joint])) {
                     const fDiv = document.createElement('div'); fDiv.className = 'folder-box'; fDiv.setAttribute('data-old-folder-key', folder);
-                    fDiv.innerHTML = `<div class="folder-title"><span>📂 <span class="folder-title-text" contenteditable="${window.isAdminMode}" style="${window.isAdminMode ? 'background:#fff; border:1px dashed #aaa; padding:0 4px; border-radius:4px;' : ''}">${folder}</span></span>${window.isAdminMode ? `<div><button onclick="addExercise(this)">+</button> <button onclick="deleteFolder(this)">🗑️</button></div>` : ''}</div>`;
                     
+                    fDiv.innerHTML = `
+                        <div class="accordion-header folder-title" onclick="toggleAccordion(event)">
+                            <div>
+                                <span class="toggle-icon">▶</span> 📂 
+                                <span class="folder-title-text" contenteditable="${window.isAdminMode}" style="${window.isAdminMode ? 'background:#fff; border:1px dashed #aaa; padding:2px 4px; border-radius:4px;' : ''}" onclick="if(window.isAdminMode) event.stopPropagation();">${folder}</span>
+                            </div>
+                            ${window.isAdminMode ? `<div><button onclick="addExercise(this, event)" class="btn-icon">➕</button> <button onclick="deleteFolder(this, event)" class="btn-icon btn-danger-icon">🗑️</button></div>` : ''}
+                        </div>
+                        <div class="accordion-content folder-content"></div>
+                    `;
+                    
+                    const fContent = fDiv.querySelector('.folder-content');
+
                     exercises.forEach((ex) => {
                         const id = `${joint}_${ex}`; const isChecked = window.selectedExercises.some(s => s.id === id) ? 'checked' : '';
-                        fDiv.innerHTML += `
-                        <div class="exercise-item draggable-item" draggable="true" ondragstart="dragStart(event, '${joint}', '${ex}')" style="display:flex; align-items:center; margin-bottom:5px; cursor:grab;">
-                            <label style="flex:1; display:flex; align-items:center; gap:5px; margin:0; cursor:grab;">
-                                <input type="checkbox" data-joint="${joint}" data-folder="${folder}" data-name="${ex}" onchange="handleCheck(this)" ${isChecked}>
+                        fContent.innerHTML += `
+                        <div class="exercise-item draggable-item" draggable="true" ondragstart="dragStart(event, '${joint}', '${ex}')">
+                            <label style="flex:1; display:flex; align-items:center; gap:8px; margin:0; cursor:grab;">
+                                <input type="checkbox" data-joint="${joint}" data-folder="${folder}" data-name="${ex}" onchange="handleCheck(this)" ${isChecked} class="custom-checkbox">
                                 <span class="exercise-title-text" contenteditable="${window.isAdminMode}" data-old-ex-key="${ex}" 
                                       style="${window.isAdminMode ? 'background:#fff; border:1px dashed #aaa; padding:2px 4px; border-radius:4px; flex:1; cursor:text;' : 'flex:1;'}" 
-                                      onclick="if(window.isAdminMode) event.preventDefault();">${ex}</span>
+                                      onclick="if(window.isAdminMode) event.stopPropagation();">${ex}</span>
                             </label>
-                            ${window.isAdminMode ? `<button onclick="deleteExercise(this, '${ex}')" style="margin-left:5px; border-radius:3px; border:1px solid #ccc; background:#fff; cursor:pointer; color:#e63946;">❌</button>` : ''}
+                            ${window.isAdminMode ? `<button onclick="deleteExercise(this, '${ex}', event)" class="btn-icon btn-danger-icon">❌</button>` : ''}
                         </div>`;
-                    }); div.appendChild(fDiv);
-                } c.appendChild(div);
+                    }); 
+                    catContent.appendChild(fDiv);
+                } 
+                c.appendChild(div);
             }
             filterExercises();
         }
@@ -507,25 +585,24 @@
                 let imgHtml = imgs.length === 0 ? `<div class="no-img-placeholder">Ctrl+V로 사진 추가</div>` : `<div class="vertical-img-container">${imgs.map((src, i) => `<div class="split-img-item"><img src="${src}"><div class="img-idx-badge">${i+1}</div></div>`).join('')}</div>`;
                 
                 const vidUrl = window.exerciseVideos[id];
-                const qrHtml = vidUrl ? `<div class="qr-box"><img src="https://api.qrserver.com/v1/create-qr-code/?size=70x70&data=${encodeURIComponent(vidUrl)}" class="qr-img"><div style="font-size:10px;text-align:center;margin-top:3px;font-weight:bold; color:#005b96;">영상</div></div>` : "";
+                const qrHtml = vidUrl ? `<div class="qr-box"><img src="https://api.qrserver.com/v1/create-qr-code/?size=70x70&data=${encodeURIComponent(vidUrl)}" class="qr-img"><div style="font-size:10px;text-align:center;margin-top:3px;font-weight:bold; color:var(--primary-medical);">영상</div></div>` : "";
 
                 const fileUploadHtml = window.isAdminMode ? `
                     <div class="no-print" style="position: absolute; bottom: 10px; left: 10px; display:flex; gap:8px;">
                         <button class="img-edit-btn" onclick="document.getElementById('f_${id}').click()">📁 사진추가</button>
-                        <button class="img-edit-btn" style="background:#00b4d8;" onclick="setVideoLink('${id}')">🔗 QR 링크</button>
-                        ${imgs.length > 0 ? `<button class="img-edit-btn" style="background:#e63946;" onclick="clearImages('${id}')">🗑️ 지우기</button>` : ''}
+                        <button class="img-edit-btn" style="background:var(--secondary-medical);" onclick="setVideoLink('${id}')">🔗 QR 링크</button>
+                        ${imgs.length > 0 ? `<button class="img-edit-btn" style="background:var(--danger-red);" onclick="clearImages('${id}')">🗑️ 지우기</button>` : ''}
                         <input type="file" id="f_${id}" accept="image/*" style="display:none" onchange="uploadLocalFile(this, '${id}')">
                     </div>` : '';
                 
-                // 🌟 동적 매크로 생성 🌟
-                let dynamicMacros = window.macroList.map(m => `<button onclick="addMacro('${id}', '${m}')">${m.includes('🚨') ? `<span style="color:#e63946;">${m}</span>` : m}</button>`).join('');
+                let dynamicMacros = window.macroList.map(m => `<button onclick="addMacro('${id}', '${m}')" class="macro-badge">${m.includes('🚨') ? `<span style="color:var(--danger-red);">${m}</span>` : m}</button>`).join('');
 
                 container.innerHTML += `
                 <div class="a4-page drop-zone-page" id="preview_${id}" ondragover="handleDragOverPage(event)" ondragleave="handleDragLeavePage(event)" ondrop="dropOnPage(event, ${idx})">
                     <div class="page-header">
                         <h1>재활 운동 가이드</h1>
                         <div style="display:flex; align-items:center; gap:10px;">
-                            <div class="patient-info">환자: <b style="color:#005b96;">${pName}</b> / 담당: <b>${tName}</b></div>
+                            <div class="patient-info">환자: <b style="color:var(--primary-medical);">${pName}</b> / 담당: <b>${tName}</b></div>
                             <button class="no-print page-delete-btn" onclick="removeExerciseFromPreview('${id}')" title="삭제">🗑️</button>
                         </div>
                     </div>
@@ -534,7 +611,7 @@
                         <div class="exercise-details">
                             <div class="exercise-title-row">
                                 <h3>[${item.joint}] ${item.name}</h3>
-                                ${window.isAdminMode ? `<button class="no-print save-btn" onclick="saveMasterDescription('${id}', document.getElementById('desc_${id}').innerHTML)" title="이 운동의 기본 설명을 영구적으로 덮어씁니다">💾 원본저장</button>` : ''}
+                                ${window.isAdminMode ? `<button class="no-print save-btn" onclick="saveMasterDescription('${id}', document.getElementById('desc_${id}').innerHTML)" title="원본 저장">💾 원본저장</button>` : ''}
                             </div>
                             <div class="macro-btns no-print">${dynamicMacros}</div>
                             <div contenteditable="true" id="desc_${id}" class="editable-desc">${descText}</div>
@@ -547,119 +624,189 @@
         }
     </script>
     <style>
+        /* 🌟 4번 적용: 소프트 UI & 메디컬 컬러 조합 🌟 */
         :root {
             --primary-medical: #005b96; 
             --secondary-medical: #00b4d8; 
             --save-teal: #009688; 
             --danger-red: #e63946; 
-            --bg-color: #f0f4f8; 
+            --bg-color: #f4f7f9; 
+            --surface: #ffffff;
+            --border-soft: #e0e6ed;
+            --shadow-soft: 0 4px 12px rgba(0,0,0,0.06);
+            --shadow-hover: 0 6px 16px rgba(0,0,0,0.1);
         }
 
-        body { font-family: 'Pretendard', sans-serif; margin: 0; display: flex; background: #515659; overflow: hidden; }
+        body { font-family: 'Pretendard', sans-serif; margin: 0; display: flex; background: var(--bg-color); overflow: hidden; color: #333; }
         
-        #global-loader { position: fixed; inset: 0; background: #ffffff; z-index: 100000; display: flex; flex-direction: column; justify-content: center; align-items: center; }
-        .spinner { width: 50px; height: 50px; border: 5px solid #e0e0e0; border-top-color: var(--primary-medical); border-radius: 50%; animation: spin 1s linear infinite; }
+        /* 스크롤바 커스텀 */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+        /* 🌟 커스텀 모달 스타일 🌟 */
+        #custom-modal-overlay { position: fixed; inset: 0; background: rgba(0,20,40,0.6); z-index: 999999; display: none; justify-content: center; align-items: center; opacity: 0; transition: opacity 0.2s ease; backdrop-filter: blur(2px); }
+        .custom-modal { background: var(--surface); padding: 25px 30px; border-radius: 12px; width: 320px; box-shadow: 0 15px 35px rgba(0,0,0,0.2); transform: translateY(-10px); animation: modalPop 0.3s forwards; }
+        @keyframes modalPop { to { transform: translateY(0); } }
+        .custom-modal h3 { margin: 0 0 15px 0; color: var(--primary-medical); font-size: 18px; }
+        .custom-modal p { margin: 0 0 20px 0; font-size: 14px; line-height: 1.5; color: #555; word-break: keep-all; }
+        .custom-modal input { width: 100%; padding: 10px; border: 1px solid var(--border-soft); border-radius: 6px; box-sizing: border-box; margin-bottom: 20px; font-size: 14px; transition: 0.2s; }
+        .custom-modal input:focus { outline: none; border-color: var(--primary-medical); box-shadow: 0 0 0 3px rgba(0,91,150,0.15); }
+        .modal-btns { display: flex; justify-content: flex-end; gap: 10px; }
+        .modal-btns button { padding: 8px 16px; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; transition: 0.2s; font-size: 13px; }
+        #modal-btn-cancel { background: #f1f5f9; color: #64748b; }
+        #modal-btn-cancel:hover { background: #e2e8f0; }
+        #modal-btn-ok { background: var(--primary-medical); color: white; }
+        #modal-btn-ok:hover { background: #004c80; }
+
+        #global-loader { position: fixed; inset: 0; background: rgba(255,255,255,0.9); z-index: 100000; display: flex; flex-direction: column; justify-content: center; align-items: center; transition: opacity 0.3s; }
+        .spinner { width: 40px; height: 40px; border: 4px solid #e2e8f0; border-top-color: var(--primary-medical); border-radius: 50%; animation: spin 1s linear infinite; }
         @keyframes spin { 100% { transform: rotate(360deg); } }
 
-        #login-overlay { position: fixed; inset: 0; background: #515659; display: flex; justify-content: center; align-items: center; z-index: 9999; }
-        .login-box { background: white; padding: 40px; border-radius: 12px; text-align: center; width: 300px; box-shadow: 0 10px 30px rgba(0,0,0,0.3); }
-        .login-box h2 { color: var(--primary-medical); }
-        .login-box input { width: 100%; padding: 12px; margin: 10px 0; border: 1px solid #ccc; border-radius: 6px; text-align: center; box-sizing: border-box; }
-        .login-box button { width: 100%; padding: 12px; background: var(--primary-medical); color: white; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; margin-top:5px; box-sizing: border-box; transition: 0.2s;}
-        .login-box button:hover { background: #004c80; }
+        #login-overlay { position: fixed; inset: 0; background: var(--primary-medical); display: flex; justify-content: center; align-items: center; z-index: 9999; }
+        .login-box { background: white; padding: 40px; border-radius: 16px; text-align: center; width: 320px; box-shadow: 0 20px 40px rgba(0,0,0,0.2); }
+        .login-box h2 { color: var(--primary-medical); margin-bottom: 25px; }
+        .login-box input { width: 100%; padding: 12px; margin: 10px 0; border: 1px solid var(--border-soft); border-radius: 8px; text-align: center; box-sizing: border-box; transition: 0.2s; }
+        .login-box input:focus { outline: none; border-color: var(--primary-medical); box-shadow: 0 0 0 3px rgba(0,91,150,0.15); }
+        .login-box button { width: 100%; padding: 12px; background: var(--primary-medical); color: white; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; margin-top:10px; box-sizing: border-box; transition: 0.2s; font-size: 15px;}
+        .login-box button:hover { background: #004c80; transform: translateY(-2px); box-shadow: 0 4px 10px rgba(0,91,150,0.3); }
         
         #main-app-container, #admin-app-container, #bottom-nav, .top-right-controls { display: none; }
 
         #main-app-container { width: 100%; height: 100vh; }
-        #sidebar { width: 280px; height: 100vh; background: #fff; padding: 20px; overflow-y: auto; border-right: 1px solid #eee; box-sizing: border-box; z-index: 10; padding-bottom: 80px; }
-        #patient-panel { width: 340px; height: 100vh; background: var(--bg-color); padding: 20px; position: fixed; right: 0; top: 0; border-left: 2px solid #ddd; box-sizing: border-box; overflow-y: auto; z-index: 10; padding-bottom: 80px; }
+        #sidebar { width: 300px; height: 100vh; background: var(--surface); padding: 20px; overflow-y: auto; border-right: 1px solid var(--border-soft); box-sizing: border-box; z-index: 10; padding-bottom: 80px; box-shadow: 2px 0 10px rgba(0,0,0,0.02); }
+        #patient-panel { width: 340px; height: 100vh; background: #f8fafc; padding: 20px; position: fixed; right: 0; top: 0; border-left: 1px solid var(--border-soft); box-sizing: border-box; overflow-y: auto; z-index: 10; padding-bottom: 80px; box-shadow: -2px 0 10px rgba(0,0,0,0.02); }
         
-        #preview-area { position: fixed; left: 280px; right: 340px; top: 0; bottom: 0; overflow: auto; padding-top: 80px; padding-bottom: 80px; box-sizing: border-box; transition: right 0.3s; background:#e2e8f0; }
+        #preview-area { position: fixed; left: 300px; right: 340px; top: 0; bottom: 0; overflow: auto; padding-top: 60px; padding-bottom: 80px; box-sizing: border-box; transition: right 0.3s; background: var(--bg-color); }
         #page-container { display: flex; flex-direction: column; align-items: center; transform: scale(0.8); transform-origin: top center; margin-bottom: -15%; min-height: 100%; width: 100%;}
         
         #admin-app-container { width: 100%; height: 100vh; justify-content: center; align-items: center; background: var(--bg-color); }
         
-        #bottom-nav { position: fixed; bottom: 0; left: 0; right: 0; height: 60px; background: #fff; align-items: center; border-top: 1px solid #ddd; z-index: 10000; box-shadow: 0 -2px 10px rgba(0,0,0,0.1); }
-        .tab-btn { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; color: #888; font-size: 13px; font-weight: bold; transition: 0.2s; border-right: 1px solid #eee; height:100%;}
+        #bottom-nav { position: fixed; bottom: 0; left: 0; right: 0; height: 65px; background: var(--surface); align-items: center; border-top: 1px solid var(--border-soft); z-index: 10000; box-shadow: 0 -4px 15px rgba(0,0,0,0.03); }
+        .tab-btn { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; color: #94a3b8; font-size: 13px; font-weight: bold; transition: all 0.2s; border-right: 1px solid var(--border-soft); height:100%; background: var(--surface);}
         .tab-btn:last-child { border-right: none; }
-        .tab-btn.active { color: var(--primary-medical); background: #f8faff; border-top: 3px solid var(--primary-medical); }
+        .tab-btn.active { color: var(--primary-medical); background: #f0f7ff; box-shadow: inset 0 4px 0 var(--primary-medical); }
+        .tab-btn:hover:not(.active) { background: #f8fafc; color: #64748b; }
 
-        .top-right-controls { position: fixed; top: 20px; right: 365px; gap: 8px; z-index: 1000; }
-        .mode-btn { padding: 10px 15px; background: #fff; border: 1px solid #ccc; border-radius: 20px; cursor: pointer; font-weight: bold; font-size: 13px; }
+        .top-right-controls { position: fixed; top: 15px; right: 360px; gap: 10px; z-index: 1000; }
+        .mode-btn { padding: 8px 16px; background: var(--surface); border: 1px solid var(--border-soft); border-radius: 20px; cursor: pointer; font-weight: bold; font-size: 13px; transition: 0.2s; box-shadow: var(--shadow-soft); color: #475569;}
+        .mode-btn:hover { box-shadow: var(--shadow-hover); transform: translateY(-1px); }
         .mode-btn.active { background: var(--secondary-medical); color: white; border-color: var(--secondary-medical); }
-        .print-btn-fixed { padding: 10px 20px; background: var(--primary-medical); color: #fff; border: none; border-radius: 20px; cursor: pointer; font-weight: bold; box-shadow: 0 4px 8px rgba(0,0,0,0.2);}
+        .print-btn-fixed { padding: 8px 20px; background: var(--primary-medical); color: #fff; border: none; border-radius: 20px; cursor: pointer; font-weight: bold; box-shadow: 0 4px 10px rgba(0,91,150,0.3); transition: 0.2s;}
+        .print-btn-fixed:hover { background: #004c80; box-shadow: 0 6px 15px rgba(0,91,150,0.4); transform: translateY(-1px); }
 
-        .user-profile { background: var(--bg-color); padding: 12px; border-radius: 8px; margin-bottom: 10px; font-size: 13px; display: flex; justify-content: space-between; align-items: center; }
-        .logout-btn { background: var(--danger-red); color: white; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer; }
+        .user-profile { background: #f1f5f9; padding: 12px 15px; border-radius: 10px; margin-bottom: 20px; font-size: 13px; display: flex; justify-content: space-between; align-items: center; }
+        .logout-btn { background: #cbd5e1; color: #333; border: none; padding: 4px 10px; border-radius: 6px; cursor: pointer; transition: 0.2s; font-weight: bold;}
+        .logout-btn:hover { background: #94a3b8; color: white; }
         
-        .admin-toggle-btn { padding: 10px 12px; background: #6c757d; color: #fff; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; font-size: 13px; box-shadow: 0 2px 4px rgba(0,0,0,0.2); }
-        .search-box { width: 100%; padding: 10px; margin-bottom:10px; border: 1px solid #ddd; border-radius: 6px; box-sizing: border-box; }
-        .search-box:focus { outline: none; border-color: var(--primary-medical); box-shadow: 0 0 5px rgba(0,91,150,0.3); }
+        .admin-toggle-btn { padding: 10px 12px; background: #e2e8f0; color: #475569; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; font-size: 13px; transition: 0.2s; }
+        .admin-toggle-btn:hover { background: #cbd5e1; color: #1e293b; }
         
-        .category-box { background: #fff; padding: 10px; margin-bottom: 10px; border-radius: 8px; border: 1px solid #eee;}
-        .category-title { font-weight: bold; color: var(--primary-medical); display: flex; justify-content: space-between; margin-bottom: 5px; }
-        .folder-box { margin-left: 8px; border-left: 2px solid #ccc; padding-left: 10px; margin-top: 8px; }
-        .folder-title { font-size: 13px; font-weight: bold; display: flex; justify-content: space-between; margin-bottom: 5px; color:#555; }
+        .search-box { width: 100%; padding: 12px; margin-bottom:12px; border: 1px solid var(--border-soft); border-radius: 8px; box-sizing: border-box; transition: 0.2s; background: var(--surface); font-size: 13px;}
+        .search-box:focus { outline: none; border-color: var(--primary-medical); box-shadow: 0 0 0 3px rgba(0,91,150,0.15); }
         
-        .draggable-item:hover { background: #f0f7ff; border-radius: 4px; }
+        /* 🌟 아코디언 메뉴 스타일 🌟 */
+        .category-box { background: var(--surface); margin-bottom: 8px; border-radius: 8px; border: 1px solid var(--border-soft); overflow: hidden; transition: 0.2s; box-shadow: 0 2px 4px rgba(0,0,0,0.02);}
+        .accordion-header { display: flex; justify-content: space-between; align-items: center; padding: 12px; cursor: pointer; user-select: none; transition: background 0.2s; }
+        .accordion-header:hover { background: #f8fafc; }
+        .category-title { font-weight: bold; color: var(--primary-medical); font-size: 14px; }
+        .folder-title { font-size: 13px; font-weight: bold; color: #475569; padding: 10px 12px 10px 24px; border-top: 1px solid var(--border-soft); }
+        .accordion-content { display: none; }
+        .category-box.open > .category-content { display: block; }
+        .folder-box.open > .folder-content { display: block; padding-bottom: 5px; }
+        
+        .toggle-icon { display: inline-block; transition: transform 0.3s ease; font-size: 10px; margin-right: 5px; color: #94a3b8; }
+        .open > .accordion-header .toggle-icon { transform: rotate(90deg); color: var(--primary-medical); }
+
+        .btn-icon { background: none; border: none; cursor: pointer; color: #94a3b8; font-size: 14px; padding: 4px; border-radius: 4px; transition: 0.2s; }
+        .btn-icon:hover { background: #e2e8f0; color: #333; }
+        .btn-danger-icon:hover { background: #ffe4e6; color: var(--danger-red); }
+
+        .exercise-item { font-size: 13px; padding: 6px 12px 6px 36px; transition: 0.2s; border-radius: 4px; margin: 0 8px 2px 8px; }
+        .draggable-item:hover { background: #f0f7ff; }
         .draggable-item:active { opacity: 0.5; }
 
-        .patient-group { margin-bottom: 10px; background: white; border-radius: 8px; border: 1px solid #e1e4e8; overflow: hidden; }
-        .patient-group-title { display: flex; justify-content: space-between; align-items: center; padding: 12px; background: #fff; border-bottom: 1px solid #eee; cursor: pointer; }
-        .new-routine-btn { background: var(--primary-medical); color: white; border: none; padding: 5px 10px; border-radius: 4px; font-size: 11px; cursor: pointer; font-weight: bold; margin-left: 10px; }
-        .patient-group-content { display: none; padding: 10px; background: #fafafa; }
+        /* 체크박스 커스텀 */
+        .custom-checkbox { width: 16px; height: 16px; cursor: pointer; accent-color: var(--primary-medical); }
+
+        /* 환자 패널 스타일 */
+        .patient-group { margin-bottom: 12px; background: var(--surface); border-radius: 10px; border: 1px solid var(--border-soft); overflow: hidden; box-shadow: var(--shadow-soft); transition: 0.2s;}
+        .patient-group:hover { box-shadow: var(--shadow-hover); }
+        .patient-group-title { display: flex; justify-content: space-between; align-items: center; padding: 14px; background: var(--surface); border-bottom: 1px solid var(--border-soft); cursor: pointer; transition: 0.2s; }
+        .patient-group-title:hover { background: #f8fafc; }
+        .patient-group-content { display: none; padding: 5px 15px 15px 15px; }
         .patient-group-content.active { display: block; }
-        .visit-record { padding: 10px; border-top: 1px solid #eee; }
-        .visit-date { font-size: 11px; color: #555; margin-bottom: 5px; }
-        .p-card-actions { display: flex; gap: 5px; }
-        .p-btn-load { flex: 2; padding: 6px; font-size: 11px; cursor: pointer; background:#eee; border:1px solid #ccc; border-radius:4px; font-weight:bold;}
-        .p-btn-del { flex: 1; padding: 6px; font-size: 11px; color: var(--danger-red); border: 1px solid var(--danger-red); background: #fff; cursor: pointer; border-radius:4px;}
-        .secret-memo { width: 100%; height: 90px; resize: none; padding: 10px; box-sizing: border-box; border: 1px dashed #ff9800; border-radius: 6px; margin-bottom: 15px; background: #fffde7; font-size: 12px; font-family: inherit;}
-
-        /* 🌟 과거기록 보기 버튼 스타일 🌟 */
-        .show-more-btn { width: 100%; padding: 8px; background: #e2e8f0; border: none; border-radius: 4px; cursor: pointer; font-size: 11px; font-weight: bold; color: #555; margin-top: 5px; }
-        .show-more-btn:hover { background: #cbd5e1; }
-
-        .t-item { display: flex; justify-content: space-between; align-items: center; padding: 10px; border-bottom: 1px solid #eee; font-size: 14px; background:#fff; margin-bottom:5px; border-radius:5px;}
-        .t-item button { border: none; border-radius: 4px; padding: 6px 12px; cursor: pointer; font-size: 12px; font-weight:bold;}
-
-        .empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 50vh; width: 80%; border: 3px dashed #ccc; border-radius: 20px; color: #6c757d; text-align: center; margin-top: 50px; transition: 0.3s; }
-        .empty-state.drag-over { background: #f0f7ff; border-color: var(--primary-medical); }
-        .empty-icon { font-size: 70px; margin-bottom: 15px; opacity: 0.3; }
-        .empty-state h2 { margin: 0 0 10px 0; color: #495057; font-size: 22px; }
-        .empty-state p { margin: 0; font-size: 14px; }
-
-        .a4-page { background: #fff; margin-bottom: 20px; padding: 5mm 10mm 10mm 10mm; box-sizing: border-box; display: flex; flex-direction: column; position: relative; box-shadow: 0 5px 15px rgba(0,0,0,0.1); width: 297mm; height: 210mm; transition: border 0.1s; border: 5px solid transparent; }
-        .a4-page.drag-over-top { border-top: 5px solid var(--primary-medical); }
-        .a4-page.drag-over-bottom { border-bottom: 5px solid var(--primary-medical); }
-
-        .page-header { border-bottom: 2px solid var(--primary-medical); display: flex; justify-content: space-between; align-items: center; padding-bottom: 3px; margin-bottom: 3mm; }
-        .page-header h1 { margin: 0; font-size: 22pt; letter-spacing: -1px; color: var(--primary-medical); }
-        .patient-info { font-size: 12pt; }
-        .page-delete-btn { background: var(--danger-red); color: white; border: none; border-radius: 4px; width: 28px; height: 28px; font-size: 14px; cursor: pointer; display: flex; align-items: center; justify-content: center;}
         
-        .page-content { flex: 1; display: flex; gap: 15px; overflow: hidden; margin-bottom: 5mm;}
-        .img-wrap { flex: 65; border: 1px solid #eee; border-radius: 8px; overflow: hidden; display: flex; align-items: center; justify-content: center; background: #fafafa; position: relative; outline: none; }
+        .visit-record { padding: 10px 0; border-bottom: 1px dashed var(--border-soft); }
+        .visit-record:last-child { border-bottom: none; }
+        .visit-date { font-size: 12px; color: #64748b; margin-bottom: 8px; }
+        
+        .p-card-actions { display: flex; gap: 6px; }
+        .p-btn-load { flex: 2; padding: 8px; font-size: 12px; cursor: pointer; background:#f1f5f9; border:none; border-radius:6px; font-weight:bold; color: #334155; transition: 0.2s;}
+        .p-btn-load:hover { background: #e2e8f0; }
+        .p-btn-del { flex: 1; padding: 8px; font-size: 12px; color: var(--danger-red); border: 1px solid #fda4af; background: #fff5f5; cursor: pointer; border-radius:6px; transition: 0.2s;}
+        .p-btn-del:hover { background: var(--danger-red); color: white; }
+        
+        .secret-memo { width: 100%; height: 90px; resize: none; padding: 12px; box-sizing: border-box; border: 1px solid #fde68a; border-radius: 8px; margin-bottom: 15px; background: #fffbeb; font-size: 13px; font-family: inherit; transition: 0.2s;}
+        .secret-memo:focus { outline: none; border-color: #f59e0b; box-shadow: 0 0 0 3px rgba(245,158,11,0.15); }
+        .show-more-btn { width: 100%; padding: 10px; background: #f1f5f9; border: none; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: bold; color: #64748b; margin-top: 10px; transition: 0.2s;}
+        .show-more-btn:hover { background: #e2e8f0; color: #334155; }
+
+        .t-item { display: flex; justify-content: space-between; align-items: center; padding: 12px; border: 1px solid var(--border-soft); font-size: 14px; background:var(--surface); margin-bottom:8px; border-radius:8px; box-shadow: 0 2px 5px rgba(0,0,0,0.02);}
+        .t-item button { border: none; border-radius: 6px; padding: 6px 12px; cursor: pointer; font-size: 12px; font-weight:bold; transition: 0.2s;}
+        .btn-warning { background: #fef08a; color: #92400e; margin-right:5px; }
+        .btn-warning:hover { background: #fde047; }
+        .btn-danger { background: #ffe4e6; color: var(--danger-red); }
+        .btn-danger:hover { background: #fecdd3; }
+
+        .empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 50vh; width: 80%; border: 3px dashed #cbd5e1; border-radius: 20px; color: #94a3b8; text-align: center; margin-top: 50px; transition: 0.3s; background: var(--surface);}
+        .empty-state.drag-over { background: #f0f7ff; border-color: var(--primary-medical); transform: scale(1.02); }
+        .empty-icon { font-size: 60px; margin-bottom: 20px; opacity: 0.5; }
+        .empty-state h2 { margin: 0 0 10px 0; color: #334155; font-size: 22px; }
+        .empty-state p { margin: 0; font-size: 15px; }
+
+        /* A4 인쇄 화면 소프트 UI */
+        .a4-page { background: var(--surface); margin-bottom: 30px; padding: 8mm 12mm; box-sizing: border-box; display: flex; flex-direction: column; position: relative; box-shadow: 0 10px 25px rgba(0,0,0,0.08); width: 297mm; height: 210mm; transition: border 0.2s, transform 0.2s; border: 4px solid transparent; border-radius: 8px;}
+        .a4-page.drag-over-top { border-top: 4px solid var(--primary-medical); transform: translateY(5px); }
+        .a4-page.drag-over-bottom { border-bottom: 4px solid var(--primary-medical); transform: translateY(-5px); }
+
+        .page-header { border-bottom: 3px solid var(--primary-medical); display: flex; justify-content: space-between; align-items: center; padding-bottom: 8px; margin-bottom: 5mm; }
+        .page-header h1 { margin: 0; font-size: 24pt; letter-spacing: -1px; color: var(--primary-medical); }
+        .patient-info { font-size: 13pt; color: #334155; }
+        .page-delete-btn { background: #ffe4e6; color: var(--danger-red); border: none; border-radius: 6px; width: 32px; height: 32px; font-size: 15px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: 0.2s;}
+        .page-delete-btn:hover { background: var(--danger-red); color: white; transform: scale(1.1); }
+        
+        .page-content { flex: 1; display: flex; gap: 20px; overflow: hidden; margin-bottom: 5mm;}
+        .img-wrap { flex: 65; border: 1px solid var(--border-soft); border-radius: 12px; overflow: hidden; display: flex; align-items: center; justify-content: center; background: #f8fafc; position: relative; outline: none; transition: 0.2s;}
+        .img-wrap:focus { border-color: var(--primary-medical); box-shadow: 0 0 0 4px rgba(0,91,150,0.1); }
+        
         .vertical-img-container { display: flex; flex-direction: column; width: 100%; height: 100%; }
-        
-        .split-img-item { flex: 1; position: relative; width: 100%; height: 50%; overflow: hidden; border-bottom: 1px solid #ddd; }
+        .split-img-item { flex: 1; position: relative; width: 100%; height: 50%; overflow: hidden; border-bottom: 1px solid var(--border-soft); }
+        .split-img-item:last-child { border-bottom: none; }
         .split-img-item img { width: 100%; height: 100%; object-fit: fill; }
         
-        .img-idx-badge { position: absolute; bottom: 8px; right: 8px; background: rgba(0,0,0,0.6); color: #fff; padding: 2px 8px; border-radius: 10px; font-size: 12px; font-weight: bold; }
+        .img-idx-badge { position: absolute; bottom: 10px; right: 10px; background: rgba(15,23,42,0.7); color: #fff; padding: 4px 10px; border-radius: 12px; font-size: 13px; font-weight: bold; backdrop-filter: blur(2px);}
         
-        .exercise-details { flex: 35; display: flex; flex-direction: column; gap: 8px; position: relative; }
+        .exercise-details { flex: 35; display: flex; flex-direction: column; gap: 10px; position: relative; }
         .exercise-title-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
-        .exercise-title-row h3 { margin: 0; font-size: 20pt; color: #333; line-height: 1.2; flex: 1; word-break: keep-all; pointer-events: none;}
-        .save-btn { padding: 5px 12px; background: var(--save-teal); color: white; border: none; border-radius: 4px; font-size: 12px; font-weight: bold; cursor: pointer; }
-        .macro-btns { display: flex; gap: 4px; flex-wrap: wrap; pointer-events: none;}
-        .macro-btns button { padding: 3px 6px; font-size: 10px; background: #f8f8f8; border: 1px solid #ddd; border-radius: 4px; cursor: pointer; font-weight: bold; color: #333; pointer-events: auto;}
-        .editable-desc { flex: 1; font-size: 11pt; line-height: 1.6; border: 1px solid #f0f0f0; padding: 10px; border-radius: 6px; overflow-y: auto; background: #fdfdfd; min-height: 0; }
+        .exercise-title-row h3 { margin: 0; font-size: 22pt; color: #1e293b; line-height: 1.2; flex: 1; word-break: keep-all; pointer-events: none;}
+        .save-btn { padding: 6px 14px; background: #d1fae5; color: #047857; border: 1px solid #34d399; border-radius: 6px; font-size: 13px; font-weight: bold; cursor: pointer; transition: 0.2s;}
+        .save-btn:hover { background: var(--save-teal); color: white; }
         
-        .qr-box { position: absolute; bottom: 10px; right: 10px; background: #fff; padding: 5px; border-radius: 8px; border: 1px solid #eee; }
-        .qr-img { width: 70px; height: 70px; display: block; }
-        .page-footer { margin-top: auto; border-top: 1px solid #ddd; padding-top: 8px; display: flex; justify-content: flex-end; align-items: center; pointer-events: none;}
-        .page-num-indicator { font-size: 10pt; color: #888; font-weight: bold; }
-        .img-edit-btn { background: #333; color: #fff; border: none; border-radius: 4px; font-size: 11px; padding: 6px 10px; cursor: pointer; font-weight:bold; pointer-events: auto;}
+        .macro-btns { display: flex; gap: 6px; flex-wrap: wrap; pointer-events: none;}
+        .macro-badge { padding: 6px 10px; font-size: 11px; background: var(--surface); border: 1px solid var(--border-soft); border-radius: 6px; cursor: pointer; font-weight: bold; color: #475569; pointer-events: auto; transition: 0.2s; box-shadow: 0 1px 2px rgba(0,0,0,0.05);}
+        .macro-badge:hover { border-color: var(--primary-medical); color: var(--primary-medical); transform: translateY(-1px); }
+        
+        .editable-desc { flex: 1; font-size: 12pt; line-height: 1.7; border: 1px solid var(--border-soft); padding: 15px; border-radius: 8px; overflow-y: auto; background: var(--surface); min-height: 0; transition: 0.2s; color: #334155;}
+        .editable-desc:focus { outline: none; border-color: var(--primary-medical); box-shadow: 0 0 0 3px rgba(0,91,150,0.1); }
+        
+        .qr-box { position: absolute; bottom: 15px; right: 15px; background: var(--surface); padding: 6px; border-radius: 10px; border: 1px solid var(--border-soft); box-shadow: var(--shadow-hover);}
+        .qr-img { width: 80px; height: 80px; display: block; }
+        .page-footer { margin-top: auto; border-top: 1px solid var(--border-soft); padding-top: 10px; display: flex; justify-content: flex-end; align-items: center; pointer-events: none;}
+        .page-num-indicator { font-size: 11pt; color: #94a3b8; font-weight: bold; }
+        
+        .img-edit-btn { background: rgba(15,23,42,0.7); color: #fff; border: none; border-radius: 6px; font-size: 12px; padding: 8px 12px; cursor: pointer; font-weight:bold; pointer-events: auto; backdrop-filter: blur(2px); transition: 0.2s;}
+        .img-edit-btn:hover { background: rgba(15,23,42,0.9); transform: scale(1.05); }
         
         .landscape-mode .a4-page { width: 297mm; height: 210mm; }
         .portrait-mode .a4-page { width: 210mm; height: 297mm; }
@@ -669,10 +816,11 @@
         .portrait-mode .editable-desc { font-size: 13pt; min-height: 0; } 
 
         @media print {
-            #sidebar, #patient-panel, #bottom-nav, .no-print, #login-overlay, .top-right-controls { display: none !important; }
+            #sidebar, #patient-panel, #bottom-nav, .no-print, #login-overlay, .top-right-controls, #custom-modal-overlay { display: none !important; }
+            body { background: #fff; }
             #preview-area { margin: 0; padding: 0; width: 100%; position: static; display: block; overflow: visible; background: #fff; }
             #page-container { transform: scale(1) !important; margin: 0; display: block; }
-            .a4-page { margin: 0; padding: 10mm 15mm; page-break-after: always; box-shadow: none; border: none; }
+            .a4-page { margin: 0; padding: 10mm 15mm; page-break-after: always; box-shadow: none; border: none; border-radius: 0; }
             .img-wrap { border: none !important; }
             .qr-box { border: none; box-shadow: none; right: 0; bottom: 0; }
         }
@@ -680,9 +828,21 @@
 </head>
 <body class="landscape-mode">
 
+    <div id="custom-modal-overlay">
+        <div class="custom-modal">
+            <h3 id="modal-title">시스템 알림</h3>
+            <p id="modal-msg"></p>
+            <input type="text" id="modal-input" autocomplete="off">
+            <div class="modal-btns">
+                <button id="modal-btn-cancel">취소</button>
+                <button id="modal-btn-ok">확인</button>
+            </div>
+        </div>
+    </div>
+
     <div id="global-loader">
         <div class="spinner"></div>
-        <div style="margin-top: 20px; font-weight: bold; color: #005b96; font-size: 14px;">데이터를 불러오는 중입니다...</div>
+        <div style="margin-top: 20px; font-weight: bold; color: var(--primary-medical); font-size: 14px;">데이터를 동기화 중입니다...</div>
     </div>
 
     <div id="login-overlay">
@@ -690,7 +850,7 @@
             <h2>재활 시스템 로그인</h2>
             <input type="text" id="emp-id" placeholder="사원번호" onkeypress="if(event.key==='Enter')attemptLogin()">
             <input type="password" id="emp-pw" placeholder="비밀번호" onkeypress="if(event.key==='Enter')attemptLogin()">
-            <button onclick="attemptLogin()">로그인</button>
+            <button onclick="attemptLogin()">시스템 접속</button>
         </div>
     </div>
 
@@ -702,36 +862,40 @@
 
     <div id="main-app-container">
         <div id="sidebar">
-            <div class="user-profile no-print"><div><span id="logged-in-user">-</span></div><button class="logout-btn" onclick="logout()">로그아웃</button></div>
-            <div style="font-weight:bold; margin-bottom:10px; color:#005b96;">📋 목록 제어</div>
-            <div style="display:flex; gap:5px; margin-bottom:15px;">
-                <button class="admin-toggle-btn" style="flex:1; background:#00b4d8;" onclick="resetSelection()">🔄 선택 초기화</button>
+            <div class="user-profile no-print">
+                <div><span id="logged-in-user" style="font-weight:bold; color:var(--primary-medical);">-</span> 님</div>
+                <button class="logout-btn" onclick="logout()">로그아웃</button>
+            </div>
+            
+            <div style="font-weight:bold; margin-bottom:12px; color:#475569; font-size:14px;">📋 목록 제어</div>
+            <div style="display:flex; gap:8px; margin-bottom:20px;">
+                <button class="admin-toggle-btn" style="flex:1; background:#e0f2fe; color:#0284c7;" onclick="resetSelection()">🔄 전체 선택 해제</button>
             </div>
             
             <div id="sidebar-patient-inputs">
-                <input type="text" id="pIn" placeholder="환자 성함" oninput="renderPreview()" class="search-box">
-                <input type="text" id="chartIn" placeholder="병록번호" class="search-box">
+                <input type="text" id="pIn" placeholder="👤 환자 성함 입력" oninput="renderPreview()" class="search-box">
+                <input type="text" id="chartIn" placeholder="🔖 병록번호 입력" class="search-box">
             </div>
             
-            <input type="text" id="searchEx" class="search-box no-print" placeholder="🔍 운동 검색 (예: 스쿼트)" oninput="filterExercises()">
+            <input type="text" id="searchEx" class="search-box no-print" placeholder="🔍 운동 검색 (예: 스쿼트)" oninput="filterExercises()" style="margin-top:10px;">
             
             <div id="controls"></div>
 
-            <div id="macro-management-section" style="display:none; margin-top:20px; border-top:2px dashed #eee; padding-top:15px;">
-                <div style="font-weight:bold; margin-bottom:10px; color:#005b96;">💬 매크로 관리</div>
-                <div id="macro-edit-list" style="margin-bottom:10px;"></div>
-                <button onclick="addGlobalMacro()" style="width:100%; padding:8px; background:#00b4d8; color:white; border:none; border-radius:4px; font-weight:bold; cursor:pointer;">+ 새 매크로 추가</button>
+            <div id="macro-management-section" style="display:none; margin-top:30px; border-top:2px dashed var(--border-soft); padding-top:20px;">
+                <div style="font-weight:bold; margin-bottom:15px; color:var(--primary-medical);">💬 커스텀 매크로 관리</div>
+                <div id="macro-edit-list" style="margin-bottom:15px;"></div>
+                <button onclick="addGlobalMacro()" style="width:100%; padding:10px; background:var(--secondary-medical); color:white; border:none; border-radius:6px; font-weight:bold; cursor:pointer; transition:0.2s; box-shadow:var(--shadow-soft);">➕ 새 매크로 추가</button>
             </div>
         </div>
 
         <div id="patient-panel" class="no-print">
-            <div style="font-weight:bold; margin-bottom:10px; color:#005b96;">📋 환자 처방 관리</div>
-            <textarea id="pMemo" class="secret-memo" placeholder="📝 [치료사 전용] 환자 상태나 인수인계 메모 (인쇄 제외)"></textarea>
-            <button class="save-routine-btn" style="width:100%; padding:12px; background:var(--save-teal); color:white; border:none; border-radius:8px; font-weight:bold; cursor:pointer; margin-bottom:10px;" onclick="savePatientRoutine()">💾 현재 처방 및 메모 저장</button>
+            <div style="font-weight:bold; margin-bottom:15px; color:#475569; font-size:15px;">📋 환자 처방 데이터</div>
+            <textarea id="pMemo" class="secret-memo" placeholder="📝 [치료사 전용] 환자 상태나 특이사항을 기록하세요. (인쇄본에는 출력되지 않습니다.)"></textarea>
+            <button class="save-routine-btn" style="width:100%; padding:14px; background:var(--save-teal); color:white; border:none; border-radius:8px; font-weight:bold; font-size:14px; cursor:pointer; margin-bottom:25px; transition:0.2s; box-shadow: 0 4px 10px rgba(0,150,136,0.3);" onclick="savePatientRoutine()">💾 현재 처방 및 메모 저장</button>
             
-            <input type="text" id="searchPatientIn" placeholder="🔍 이름/차트번호 검색..." oninput="searchPatients()" class="search-box" style="background:#fff;">
+            <input type="text" id="searchPatientIn" placeholder="🔍 이름 또는 차트번호 검색..." oninput="searchPatients()" class="search-box">
             
-            <div style="font-size: 13px; font-weight: bold; margin-bottom: 10px; color: #555;">나의 환자 목록</div>
+            <div style="font-size: 13px; font-weight: bold; margin-bottom: 12px; color: #94a3b8; padding-bottom:5px; border-bottom:1px solid var(--border-soft);">나의 환자 목록</div>
             <div id="patient-list-container"></div>
         </div>
         
@@ -739,22 +903,22 @@
     </div>
 
     <div id="admin-app-container">
-        <div style="width:400px; background:white; padding:30px; border-radius:15px; box-shadow:0 10px 25px rgba(0,0,0,0.1);">
-            <h2 style="margin-top:0; color:#005b96;">👨‍⚕️ 치료사 계정 관리</h2>
-            <div id="t-list" style="margin-bottom:20px; border:1px solid #eee; border-radius:8px; max-height:300px; overflow-y:auto; padding:10px; background:#fafafa;"></div>
-            <button onclick="addTherapist()" style="width:100%; padding:12px; background:var(--save-teal); color:white; border:none; border-radius:8px; font-weight:bold; cursor:pointer;">+ 새 치료사 등록</button>
+        <div style="width:450px; background:white; padding:40px; border-radius:20px; box-shadow:0 20px 40px rgba(0,0,0,0.08);">
+            <h2 style="margin-top:0; color:var(--primary-medical); text-align:center; margin-bottom:25px;">👨‍⚕️ 치료사 계정 관리</h2>
+            <div id="t-list" style="margin-bottom:25px; border:1px solid var(--border-soft); border-radius:12px; max-height:400px; overflow-y:auto; padding:15px; background:#f8fafc;"></div>
+            <button onclick="addTherapist()" style="width:100%; padding:14px; background:var(--save-teal); color:white; border:none; border-radius:10px; font-weight:bold; font-size:15px; cursor:pointer; transition:0.2s; box-shadow:0 4px 10px rgba(0,150,136,0.2);">➕ 새 치료사 등록</button>
         </div>
     </div>
 
     <div id="bottom-nav" class="no-print">
         <div id="tab-prescription" class="tab-btn active" onclick="switchTab('prescription')">
-            <span style="font-size:18px; margin-bottom:3px;">🏠</span> 처방 & 인쇄
+            <span style="font-size:22px; margin-bottom:4px;">🏠</span> 처방 & 인쇄
         </div>
         <div id="tab-management" class="tab-btn" onclick="switchTab('management')">
-            <span style="font-size:18px; margin-bottom:3px;">⚙️</span> 운동 관리
+            <span style="font-size:22px; margin-bottom:4px;">⚙️</span> 운동 관리
         </div>
         <div id="tab-admin" class="tab-btn" style="display:none;" onclick="switchTab('admin')">
-            <span style="font-size:18px; margin-bottom:3px;">👤</span> 인사 관리
+            <span style="font-size:22px; margin-bottom:4px;">👤</span> 인사 관리
         </div>
     </div>
 
