@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>재활 시스템 - 아코디언 상태 유지 최적화</title>
+    <title>재활 시스템 - 아코디언 상태 유지 버그 픽스</title>
     
     <style id="dynamic-print-style">
         @media print { @page { size: landscape; margin: 0; } }
@@ -36,7 +36,6 @@
         window.keyMigrations = {}; 
         window.currentTab = 'prescription';
 
-        // 커스텀 모달
         window.CustomModal = {
             show: function(type, msg, defaultVal = '') {
                 return new Promise((resolve) => {
@@ -276,7 +275,6 @@
             window.exerciseDescriptions[id] = text; await CustomModal.alert("공용 데이터(원본)가 영구적으로 업데이트되었습니다.");
         };
 
-        // 🌟 수정: 폴더/운동 추가 시 자동으로 상태 기억해서 열리도록 파라미터 전달 🌟
         window.addCategory = async function() { 
             syncDOMtoData(); const n = await CustomModal.prompt("추가할 대분류(부위) 명을 입력하세요:"); 
             if(n && !window.exerciseData[n]) { window.exerciseData[n] = {"스트레칭": [], "운동": []}; renderControls(n); } 
@@ -335,7 +333,6 @@
             }
         }
 
-        // 드래그 앤 드롭
         window.dragStart = function(e, joint, name) { e.dataTransfer.setData('joint', joint); e.dataTransfer.setData('name', name); };
         window.allowDrop = function(e) { e.preventDefault(); };
         window.dropEmpty = function(e) { e.preventDefault(); const joint = e.dataTransfer.getData('joint'); const name = e.dataTransfer.getData('name'); if (joint && name) addExerciseToSelection(joint, name, window.selectedExercises.length); };
@@ -503,27 +500,26 @@
             e.currentTarget.parentElement.classList.toggle('open');
         }
 
-        // 🌟 핵심: 렌더링 시 폴더 상태 유지 및 방금 추가한 폴더 자동 열림 🌟
+        // 🌟 버그 수정 완료: 상태 기억(State Preservation) 완벽 적용 🌟
         function renderControls(forceOpenCat = null, forceOpenFold = null) {
             const c = document.getElementById('controls');
-            
-            // 현재 열려있는 요소들 파악
+            if (!c) return;
+
+            // 1. 현재 열려있는 아코디언 상태 기억
             const openCategories = new Set();
             const openFolders = new Set();
 
-            if (c) {
-                document.querySelectorAll('.category-box.open').forEach(box => {
-                    const titleEl = box.querySelector('.category-title-text');
-                    if(titleEl) openCategories.add(titleEl.innerText.trim());
-                });
-                document.querySelectorAll('.folder-box.open').forEach(box => {
-                    const catEl = box.closest('.category-box').querySelector('.category-title-text');
-                    const folEl = box.querySelector('.folder-title-text');
-                    if(catEl && folEl) openFolders.add(catEl.innerText.trim() + "::" + folEl.innerText.trim());
-                });
-            }
+            c.querySelectorAll('.category-box.open').forEach(box => {
+                const titleEl = box.querySelector('.category-title-text');
+                if(titleEl) openCategories.add(titleEl.innerText.trim());
+            });
+            c.querySelectorAll('.folder-box.open').forEach(box => {
+                const catEl = box.closest('.category-box')?.querySelector('.category-title-text');
+                const folEl = box.querySelector('.folder-title-text');
+                if(catEl && folEl) openFolders.add(catEl.innerText.trim() + "::" + folEl.innerText.trim());
+            });
 
-            // 추가 파라미터가 있으면 강제 오픈
+            // 2. 방금 추가한 폴더/분류가 있다면 강제 오픈 목록에 추가
             if (forceOpenCat) openCategories.add(forceOpenCat);
             if (forceOpenFold) openFolders.add(forceOpenCat + "::" + forceOpenFold);
 
@@ -538,7 +534,7 @@
                 const folders = window.exerciseData[joint];
                 const div = document.createElement('div'); div.className = 'category-box';
                 
-                // 상태 복구
+                // 🌟 상태 복구 🌟
                 if (openCategories.has(joint)) div.classList.add('open');
 
                 div.innerHTML = `
@@ -557,7 +553,7 @@
                 for (const [folder, exercises] of Object.entries(window.exerciseData[joint])) {
                     const fDiv = document.createElement('div'); fDiv.className = 'folder-box'; fDiv.setAttribute('data-old-folder-key', folder);
                     
-                    // 상태 복구
+                    // 🌟 상태 복구 🌟
                     if (openFolders.has(joint + "::" + folder)) fDiv.classList.add('open');
 
                     fDiv.innerHTML = `
@@ -590,7 +586,7 @@
                 } 
                 c.appendChild(div);
             }
-            filterExercises(); // 검색어 유지
+            filterExercises();
         }
 
         window.renderPreview = function() {
@@ -736,6 +732,7 @@
         .search-box { width: 100%; padding: 12px; margin-bottom:12px; border: 1px solid var(--border-soft); border-radius: 8px; box-sizing: border-box; transition: 0.2s; background: var(--surface); font-size: 13px;}
         .search-box:focus { outline: none; border-color: var(--primary-medical); box-shadow: 0 0 0 3px rgba(0,91,150,0.15); }
         
+        /* 🌟 아코디언 메뉴 스타일 🌟 */
         .category-box { background: var(--surface); margin-bottom: 8px; border-radius: 8px; border: 1px solid var(--border-soft); overflow: hidden; transition: 0.2s; box-shadow: 0 2px 4px rgba(0,0,0,0.02);}
         .accordion-header { display: flex; justify-content: space-between; align-items: center; padding: 12px; cursor: pointer; user-select: none; transition: background 0.2s; }
         .accordion-header:hover { background: #f8fafc; }
