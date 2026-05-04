@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>재활 시스템 - 고급 디자인 & UX 적용</title>
+    <title>재활 시스템 - 아코디언 상태 유지 최적화</title>
     
     <style id="dynamic-print-style">
         @media print { @page { size: landscape; margin: 0; } }
@@ -36,7 +36,7 @@
         window.keyMigrations = {}; 
         window.currentTab = 'prescription';
 
-        // 🌟 1번 적용: 고급 커스텀 모달(팝업) 시스템 🌟
+        // 커스텀 모달
         window.CustomModal = {
             show: function(type, msg, defaultVal = '') {
                 return new Promise((resolve) => {
@@ -47,23 +47,12 @@
                     
                     document.getElementById('modal-msg').innerHTML = msg;
                     overlay.style.display = 'flex';
-                    
-                    // 약간의 딜레이로 애니메이션 효과
                     setTimeout(() => overlay.style.opacity = '1', 10); 
 
-                    if(type === 'prompt') { 
-                        input.style.display = 'block'; 
-                        input.value = defaultVal; 
-                        input.focus(); 
-                    } else { 
-                        input.style.display = 'none'; 
-                    }
-
-                    if(type === 'alert') { 
-                        btnCancel.style.display = 'none'; 
-                    } else { 
-                        btnCancel.style.display = 'block'; 
-                    }
+                    if(type === 'prompt') { input.style.display = 'block'; input.value = defaultVal; input.focus(); } 
+                    else { input.style.display = 'none'; }
+                    if(type === 'alert') { btnCancel.style.display = 'none'; } 
+                    else { btnCancel.style.display = 'block'; }
 
                     const closeAndResolve = (val) => {
                         overlay.style.opacity = '0';
@@ -287,11 +276,32 @@
             window.exerciseDescriptions[id] = text; await CustomModal.alert("공용 데이터(원본)가 영구적으로 업데이트되었습니다.");
         };
 
-        window.addCategory = async function() { syncDOMtoData(); const n = await CustomModal.prompt("추가할 대분류(부위) 명을 입력하세요:"); if(n && !window.exerciseData[n]) { window.exerciseData[n] = {"스트레칭": [], "운동": []}; renderControls(); } }
-        window.deleteCategory = async function(btn) { syncDOMtoData(); const catTitle = btn.closest('.category-box').querySelector('.category-title-text').innerText.trim(); if(await CustomModal.confirm(`정말 [${catTitle}] 대분류를 통째로 삭제하시겠습니까?`)) { delete window.exerciseData[catTitle]; removeDeletedFromSelection(); renderControls(); renderPreview(); } }
-        window.addFolder = async function(btn, ev) { if(ev) ev.stopPropagation(); syncDOMtoData(); const catTitle = btn.closest('.category-box').querySelector('.category-title-text').innerText.trim(); const f = await CustomModal.prompt(`[${catTitle}] 하위에 추가할 새 폴더명을 입력하세요:`); if (f && !window.exerciseData[catTitle][f]) { window.exerciseData[catTitle][f] = []; renderControls(); } }
-        window.deleteFolder = async function(btn, ev) { if(ev) ev.stopPropagation(); syncDOMtoData(); const catTitle = btn.closest('.category-box').querySelector('.category-title-text').innerText.trim(); const fTitle = btn.closest('.folder-box').querySelector('.folder-title-text').innerText.trim(); if(await CustomModal.confirm(`정말 [${fTitle}] 폴더와 내부 운동을 모두 삭제하시겠습니까?`)) { delete window.exerciseData[catTitle][fTitle]; removeDeletedFromSelection(); renderControls(); renderPreview(); } }
-        window.addExercise = async function(btn, ev) { if(ev) ev.stopPropagation(); syncDOMtoData(); const catTitle = btn.closest('.category-box').querySelector('.category-title-text').innerText.trim(); const fTitle = btn.closest('.folder-box').querySelector('.folder-title-text').innerText.trim(); const n = await CustomModal.prompt(`[${fTitle}] 폴더에 추가할 운동명을 입력하세요:`); if(n) { window.exerciseData[catTitle][fTitle].push(n); renderControls(); } }
+        // 🌟 수정: 폴더/운동 추가 시 자동으로 상태 기억해서 열리도록 파라미터 전달 🌟
+        window.addCategory = async function() { 
+            syncDOMtoData(); const n = await CustomModal.prompt("추가할 대분류(부위) 명을 입력하세요:"); 
+            if(n && !window.exerciseData[n]) { window.exerciseData[n] = {"스트레칭": [], "운동": []}; renderControls(n); } 
+        }
+        window.deleteCategory = async function(btn) { 
+            syncDOMtoData(); const catTitle = btn.closest('.category-box').querySelector('.category-title-text').innerText.trim(); 
+            if(await CustomModal.confirm(`정말 [${catTitle}] 대분류를 통째로 삭제하시겠습니까?`)) { delete window.exerciseData[catTitle]; removeDeletedFromSelection(); renderControls(); renderPreview(); } 
+        }
+        window.addFolder = async function(btn, ev) { 
+            if(ev) ev.stopPropagation(); syncDOMtoData(); 
+            const catTitle = btn.closest('.category-box').querySelector('.category-title-text').innerText.trim(); 
+            const f = await CustomModal.prompt(`[${catTitle}] 하위에 추가할 새 폴더명을 입력하세요:`); 
+            if (f && !window.exerciseData[catTitle][f]) { window.exerciseData[catTitle][f] = []; renderControls(catTitle, f); } 
+        }
+        window.deleteFolder = async function(btn, ev) { 
+            if(ev) ev.stopPropagation(); syncDOMtoData(); 
+            const catTitle = btn.closest('.category-box').querySelector('.category-title-text').innerText.trim(); const fTitle = btn.closest('.folder-box').querySelector('.folder-title-text').innerText.trim(); 
+            if(await CustomModal.confirm(`정말 [${fTitle}] 폴더와 내부 운동을 모두 삭제하시겠습니까?`)) { delete window.exerciseData[catTitle][fTitle]; removeDeletedFromSelection(); renderControls(); renderPreview(); } 
+        }
+        window.addExercise = async function(btn, ev) { 
+            if(ev) ev.stopPropagation(); syncDOMtoData(); 
+            const catTitle = btn.closest('.category-box').querySelector('.category-title-text').innerText.trim(); const fTitle = btn.closest('.folder-box').querySelector('.folder-title-text').innerText.trim(); 
+            const n = await CustomModal.prompt(`[${fTitle}] 폴더에 추가할 운동명을 입력하세요:`); 
+            if(n) { window.exerciseData[catTitle][fTitle].push(n); renderControls(catTitle, fTitle); } 
+        }
         
         window.addGlobalMacro = async function() {
             const text = await CustomModal.prompt("새로운 매크로 문구를 입력하세요:");
@@ -381,9 +391,7 @@
 
         window.deletePatientRoutine = async function(key) {
             if (await CustomModal.confirm("이 환자의 해당 방문 기록을 완전히 삭제하시겠습니까?")) {
-                delete window.patientDB[key];
-                await setDoc(doc(db, "settings", "patients"), window.patientDB);
-                renderPatientList();
+                delete window.patientDB[key]; await setDoc(doc(db, "settings", "patients"), window.patientDB); renderPatientList();
             }
         };
 
@@ -446,14 +454,13 @@
 
         window.searchPatients = function() { renderPatientList(); };
 
-        // 🌟 2번 적용: 아코디언 메뉴 동적 열림 (검색 시 자동 열림) 🌟
         window.filterExercises = function() {
             const keyword = document.getElementById('searchEx').value.toLowerCase().trim();
             if (keyword === "") {
                 document.querySelectorAll('.exercise-item').forEach(item => item.style.display = 'flex');
                 document.querySelectorAll('.folder-box, .category-box').forEach(box => {
                     box.style.display = 'block';
-                    box.classList.remove('open'); // 검색 취소 시 다 접음
+                    box.classList.remove('open'); 
                 });
                 return;
             }
@@ -461,12 +468,12 @@
             document.querySelectorAll('.folder-box').forEach(box => { 
                 const visible = Array.from(box.querySelectorAll('.exercise-item')).some(item => item.style.display !== 'none'); 
                 box.style.display = visible ? 'block' : 'none'; 
-                if(visible) box.classList.add('open'); // 일치하는 항목이 있으면 폴더 염
+                if(visible) box.classList.add('open'); 
             });
             document.querySelectorAll('.category-box').forEach(box => { 
                 const visible = Array.from(box.querySelectorAll('.folder-box')).some(f => f.style.display !== 'none'); 
                 box.style.display = visible ? 'block' : 'none'; 
-                if(visible) box.classList.add('open'); // 일치하는 폴더가 있으면 대분류 염
+                if(visible) box.classList.add('open'); 
             });
         };
 
@@ -492,13 +499,35 @@
         }
 
         window.toggleAccordion = function(e) {
-            // 수정 모드일 때 텍스트 클릭 시 펼쳐지는 것 방지
-            if(e.target.tagName.toLowerCase() === 'span' && window.isAdminMode) return;
+            if(e.target.tagName.toLowerCase() === 'span' && window.isAdminMode && e.target.hasAttribute('contenteditable')) return;
             e.currentTarget.parentElement.classList.toggle('open');
         }
 
-        function renderControls() {
-            const c = document.getElementById('controls'); c.innerHTML = "";
+        // 🌟 핵심: 렌더링 시 폴더 상태 유지 및 방금 추가한 폴더 자동 열림 🌟
+        function renderControls(forceOpenCat = null, forceOpenFold = null) {
+            const c = document.getElementById('controls');
+            
+            // 현재 열려있는 요소들 파악
+            const openCategories = new Set();
+            const openFolders = new Set();
+
+            if (c) {
+                document.querySelectorAll('.category-box.open').forEach(box => {
+                    const titleEl = box.querySelector('.category-title-text');
+                    if(titleEl) openCategories.add(titleEl.innerText.trim());
+                });
+                document.querySelectorAll('.folder-box.open').forEach(box => {
+                    const catEl = box.closest('.category-box').querySelector('.category-title-text');
+                    const folEl = box.querySelector('.folder-title-text');
+                    if(catEl && folEl) openFolders.add(catEl.innerText.trim() + "::" + folEl.innerText.trim());
+                });
+            }
+
+            // 추가 파라미터가 있으면 강제 오픈
+            if (forceOpenCat) openCategories.add(forceOpenCat);
+            if (forceOpenFold) openFolders.add(forceOpenCat + "::" + forceOpenFold);
+
+            c.innerHTML = "";
             const fixedOrder = ["목", "어깨", "팔꿈치", "손목", "허리", "고관절", "무릎", "발목"];
             const currentCategories = Object.keys(window.exerciseData).sort((a, b) => {
                 const iA = fixedOrder.indexOf(a); const iB = fixedOrder.indexOf(b);
@@ -509,7 +538,9 @@
                 const folders = window.exerciseData[joint];
                 const div = document.createElement('div'); div.className = 'category-box';
                 
-                // 🌟 2번 아코디언 헤더 적용 🌟
+                // 상태 복구
+                if (openCategories.has(joint)) div.classList.add('open');
+
                 div.innerHTML = `
                     <div class="accordion-header category-title" onclick="toggleAccordion(event)">
                         <div>
@@ -526,6 +557,9 @@
                 for (const [folder, exercises] of Object.entries(window.exerciseData[joint])) {
                     const fDiv = document.createElement('div'); fDiv.className = 'folder-box'; fDiv.setAttribute('data-old-folder-key', folder);
                     
+                    // 상태 복구
+                    if (openFolders.has(joint + "::" + folder)) fDiv.classList.add('open');
+
                     fDiv.innerHTML = `
                         <div class="accordion-header folder-title" onclick="toggleAccordion(event)">
                             <div>
@@ -556,7 +590,7 @@
                 } 
                 c.appendChild(div);
             }
-            filterExercises();
+            filterExercises(); // 검색어 유지
         }
 
         window.renderPreview = function() {
@@ -624,7 +658,6 @@
         }
     </script>
     <style>
-        /* 🌟 4번 적용: 소프트 UI & 메디컬 컬러 조합 🌟 */
         :root {
             --primary-medical: #005b96; 
             --secondary-medical: #00b4d8; 
@@ -639,12 +672,10 @@
 
         body { font-family: 'Pretendard', sans-serif; margin: 0; display: flex; background: var(--bg-color); overflow: hidden; color: #333; }
         
-        /* 스크롤바 커스텀 */
         ::-webkit-scrollbar { width: 6px; }
         ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
         ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
 
-        /* 🌟 커스텀 모달 스타일 🌟 */
         #custom-modal-overlay { position: fixed; inset: 0; background: rgba(0,20,40,0.6); z-index: 999999; display: none; justify-content: center; align-items: center; opacity: 0; transition: opacity 0.2s ease; backdrop-filter: blur(2px); }
         .custom-modal { background: var(--surface); padding: 25px 30px; border-radius: 12px; width: 320px; box-shadow: 0 15px 35px rgba(0,0,0,0.2); transform: translateY(-10px); animation: modalPop 0.3s forwards; }
         @keyframes modalPop { to { transform: translateY(0); } }
@@ -705,7 +736,6 @@
         .search-box { width: 100%; padding: 12px; margin-bottom:12px; border: 1px solid var(--border-soft); border-radius: 8px; box-sizing: border-box; transition: 0.2s; background: var(--surface); font-size: 13px;}
         .search-box:focus { outline: none; border-color: var(--primary-medical); box-shadow: 0 0 0 3px rgba(0,91,150,0.15); }
         
-        /* 🌟 아코디언 메뉴 스타일 🌟 */
         .category-box { background: var(--surface); margin-bottom: 8px; border-radius: 8px; border: 1px solid var(--border-soft); overflow: hidden; transition: 0.2s; box-shadow: 0 2px 4px rgba(0,0,0,0.02);}
         .accordion-header { display: flex; justify-content: space-between; align-items: center; padding: 12px; cursor: pointer; user-select: none; transition: background 0.2s; }
         .accordion-header:hover { background: #f8fafc; }
@@ -726,10 +756,8 @@
         .draggable-item:hover { background: #f0f7ff; }
         .draggable-item:active { opacity: 0.5; }
 
-        /* 체크박스 커스텀 */
         .custom-checkbox { width: 16px; height: 16px; cursor: pointer; accent-color: var(--primary-medical); }
 
-        /* 환자 패널 스타일 */
         .patient-group { margin-bottom: 12px; background: var(--surface); border-radius: 10px; border: 1px solid var(--border-soft); overflow: hidden; box-shadow: var(--shadow-soft); transition: 0.2s;}
         .patient-group:hover { box-shadow: var(--shadow-hover); }
         .patient-group-title { display: flex; justify-content: space-between; align-items: center; padding: 14px; background: var(--surface); border-bottom: 1px solid var(--border-soft); cursor: pointer; transition: 0.2s; }
@@ -765,7 +793,6 @@
         .empty-state h2 { margin: 0 0 10px 0; color: #334155; font-size: 22px; }
         .empty-state p { margin: 0; font-size: 15px; }
 
-        /* A4 인쇄 화면 소프트 UI */
         .a4-page { background: var(--surface); margin-bottom: 30px; padding: 8mm 12mm; box-sizing: border-box; display: flex; flex-direction: column; position: relative; box-shadow: 0 10px 25px rgba(0,0,0,0.08); width: 297mm; height: 210mm; transition: border 0.2s, transform 0.2s; border: 4px solid transparent; border-radius: 8px;}
         .a4-page.drag-over-top { border-top: 4px solid var(--primary-medical); transform: translateY(5px); }
         .a4-page.drag-over-bottom { border-bottom: 4px solid var(--primary-medical); transform: translateY(-5px); }
