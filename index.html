@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>재활 시스템 - 글자 클릭 시 체크박스 방지</title>
+    <title>재활 시스템 - 글자 수정 버그 픽스</title>
     
     <style id="dynamic-print-style">
         @media print { @page { size: landscape; margin: 0; } }
@@ -533,6 +533,7 @@
             e.currentTarget.parentElement.classList.toggle('open');
         }
 
+        // 🌟 수정사항 반영: 드래그 앤 드롭과 contenteditable 충돌 완벽 방지 🌟
         function renderControls(forceOpenCat = null, forceOpenFold = null) {
             const c = document.getElementById('controls');
             if(!c) return;
@@ -559,6 +560,9 @@
                 if (iA !== -1 && iB !== -1) return iA - iB; if (iA !== -1) return -1; if (iB !== -1) return 1; return a.localeCompare(b); 
             });
 
+            // 관리자(수정) 모드일 땐 드래그 기능을 완전히 꺼버림 (글자 클릭 버그 원천 차단)
+            const isDraggable = !window.isAdminMode;
+
             for (const joint of currentCategories) {
                 const folders = window.exerciseData[joint];
                 const div = document.createElement('div'); div.className = 'category-box';
@@ -569,7 +573,7 @@
                     <div class="accordion-header category-title" onclick="toggleAccordion(event)">
                         <div>
                             <span class="toggle-icon">▶</span>
-                            <span class="category-title-text" contenteditable="${window.isAdminMode}" data-old-key="${joint}" style="${window.isAdminMode ? 'background:#fff; border:1px dashed #aaa; padding:2px 4px; border-radius:4px;' : ''}" onclick="if(window.isAdminMode) event.stopPropagation();">${joint}</span>
+                            <span class="category-title-text" contenteditable="${window.isAdminMode}" data-old-key="${joint}" style="${window.isAdminMode ? 'background:#fff; border:1px dashed #aaa; padding:2px 4px; border-radius:4px; cursor:text;' : ''}" onclick="if(window.isAdminMode) { event.stopPropagation(); this.focus(); }">${joint}</span>
                         </div>
                         ${window.isAdminMode ? `<div><button onclick="addFolder(this, event)" class="btn-icon">📁+</button> <button onclick="deleteCategory(this)" class="btn-icon btn-danger-icon">🗑️</button></div>` : ''}
                     </div>
@@ -587,7 +591,7 @@
                         <div class="accordion-header folder-title" onclick="toggleAccordion(event)">
                             <div>
                                 <span class="toggle-icon">▶</span> 📂 
-                                <span class="folder-title-text" contenteditable="${window.isAdminMode}" style="${window.isAdminMode ? 'background:#fff; border:1px dashed #aaa; padding:2px 4px; border-radius:4px;' : ''}" onclick="if(window.isAdminMode) event.stopPropagation();">${folder}</span>
+                                <span class="folder-title-text" contenteditable="${window.isAdminMode}" style="${window.isAdminMode ? 'background:#fff; border:1px dashed #aaa; padding:2px 4px; border-radius:4px; cursor:text;' : ''}" onclick="if(window.isAdminMode) { event.stopPropagation(); this.focus(); }">${folder}</span>
                             </div>
                             ${window.isAdminMode ? `<div><button onclick="addExercise(this, event)" class="btn-icon">➕</button> <button onclick="deleteFolder(this, event)" class="btn-icon btn-danger-icon">🗑️</button></div>` : ''}
                         </div>
@@ -599,13 +603,12 @@
                     exercises.forEach((ex) => {
                         const id = `${joint}_${ex}`; const isChecked = window.selectedExercises.some(s => s.id === id) ? 'checked' : '';
                         
-                        // 🚨 텍스트와 체크박스 분리 (label 제거) 🚨
                         fContent.innerHTML += `
-                        <div class="exercise-item draggable-item" draggable="true" ondragstart="dragStart(event, '${joint}', '${ex}')" style="display:flex; align-items:center; gap:8px;">
+                        <div class="exercise-item ${isDraggable ? 'draggable-item' : ''}" draggable="${isDraggable}" ondragstart="${isDraggable ? `dragStart(event, '${joint}', '${ex}')` : 'return false;'}" style="display:flex; align-items:center; gap:8px;">
                             <input type="checkbox" data-joint="${joint}" data-folder="${folder}" data-name="${ex}" onchange="handleCheck(this)" ${isChecked} class="custom-checkbox" style="cursor:pointer;">
                             <span class="exercise-title-text" contenteditable="${window.isAdminMode}" data-old-ex-key="${ex}" 
                                   style="${window.isAdminMode ? 'background:#fff; border:1px dashed #aaa; padding:2px 4px; border-radius:4px; flex:1; cursor:text;' : 'flex:1; cursor:grab;'}" 
-                                  onclick="if(window.isAdminMode) event.stopPropagation();">${ex}</span>
+                                  onclick="if(window.isAdminMode) { event.stopPropagation(); this.focus(); }">${ex}</span>
                             ${window.isAdminMode ? `<button onclick="deleteExercise(this, '${ex}', event)" class="btn-icon btn-danger-icon" style="margin-left:auto;">❌</button>` : ''}
                         </div>`;
                     }); 
@@ -812,7 +815,9 @@
 
         .exercise-item { font-size: 13px; padding: 6px 12px 6px 36px; transition: 0.2s; border-radius: 4px; margin: 0 8px 2px 8px; }
         .draggable-item:hover { background: #f0f7ff; }
-        .draggable-item:active { opacity: 0.5; }
+        
+        /* 🚨 글씨 클릭 시 커서 모양 명확히 하기 🚨 */
+        .exercise-title-text:focus { outline: 2px solid var(--primary-medical); background: #f0f7ff !important; }
 
         .custom-checkbox { width: 16px; height: 16px; cursor: pointer; accent-color: var(--primary-medical); }
 
@@ -867,7 +872,6 @@
         
         .page-content { flex: 1; display: flex; gap: 20px; overflow: hidden; margin-bottom: 5mm;}
         
-        /* 🚨 사진 꽉 차게 원상복구 (object-fit: fill) 🚨 */
         .img-wrap { flex: 50; border: 1px solid var(--border-soft); border-radius: 12px; overflow: hidden; display: flex; align-items: center; justify-content: center; background: #fff; position: relative; outline: none; transition: 0.2s;}
         .img-wrap:focus { border-color: var(--primary-medical); box-shadow: 0 0 0 4px rgba(0,91,150,0.1); }
         
