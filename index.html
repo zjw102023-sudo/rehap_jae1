@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>재활 시스템 - 선택 목록(장바구니) 및 동선 최적화 (사진 원상복구)</title>
+    <title>재활 시스템 - 글자 클릭 시 체크박스 방지</title>
     
     <style id="dynamic-print-style">
         @media print { @page { size: landscape; margin: 0; } }
@@ -161,11 +161,13 @@
                 if (tab === 'management') {
                     window.isAdminMode = true;
                     document.getElementById('patient-panel').style.display = 'none';
+                    document.getElementById('sidebar-patient-inputs').style.display = 'none';
                     document.getElementById('macro-management-section').style.display = 'block'; 
                     document.getElementById('preview-area').style.right = '0'; 
                 } else {
                     window.isAdminMode = false;
                     document.getElementById('patient-panel').style.display = 'block';
+                    document.getElementById('sidebar-patient-inputs').style.display = 'flex';
                     document.getElementById('macro-management-section').style.display = 'none';
                     document.getElementById('preview-area').style.right = '340px'; 
                 }
@@ -596,15 +598,15 @@
 
                     exercises.forEach((ex) => {
                         const id = `${joint}_${ex}`; const isChecked = window.selectedExercises.some(s => s.id === id) ? 'checked' : '';
+                        
+                        // 🚨 텍스트와 체크박스 분리 (label 제거) 🚨
                         fContent.innerHTML += `
-                        <div class="exercise-item draggable-item" draggable="true" ondragstart="dragStart(event, '${joint}', '${ex}')">
-                            <label style="flex:1; display:flex; align-items:center; gap:8px; margin:0; cursor:grab;">
-                                <input type="checkbox" data-joint="${joint}" data-folder="${folder}" data-name="${ex}" onchange="handleCheck(this)" ${isChecked} class="custom-checkbox">
-                                <span class="exercise-title-text" contenteditable="${window.isAdminMode}" data-old-ex-key="${ex}" 
-                                      style="${window.isAdminMode ? 'background:#fff; border:1px dashed #aaa; padding:2px 4px; border-radius:4px; flex:1; cursor:text;' : 'flex:1;'}" 
-                                      onclick="if(window.isAdminMode) event.stopPropagation();">${ex}</span>
-                            </label>
-                            ${window.isAdminMode ? `<button onclick="deleteExercise(this, '${ex}', event)" class="btn-icon btn-danger-icon">❌</button>` : ''}
+                        <div class="exercise-item draggable-item" draggable="true" ondragstart="dragStart(event, '${joint}', '${ex}')" style="display:flex; align-items:center; gap:8px;">
+                            <input type="checkbox" data-joint="${joint}" data-folder="${folder}" data-name="${ex}" onchange="handleCheck(this)" ${isChecked} class="custom-checkbox" style="cursor:pointer;">
+                            <span class="exercise-title-text" contenteditable="${window.isAdminMode}" data-old-ex-key="${ex}" 
+                                  style="${window.isAdminMode ? 'background:#fff; border:1px dashed #aaa; padding:2px 4px; border-radius:4px; flex:1; cursor:text;' : 'flex:1; cursor:grab;'}" 
+                                  onclick="if(window.isAdminMode) event.stopPropagation();">${ex}</span>
+                            ${window.isAdminMode ? `<button onclick="deleteExercise(this, '${ex}', event)" class="btn-icon btn-danger-icon" style="margin-left:auto;">❌</button>` : ''}
                         </div>`;
                     }); 
                     catContent.appendChild(fDiv);
@@ -865,14 +867,14 @@
         
         .page-content { flex: 1; display: flex; gap: 20px; overflow: hidden; margin-bottom: 5mm;}
         
-        /* 🚨 원상 복구: object-fit: fill 🚨 */
+        /* 🚨 사진 꽉 차게 원상복구 (object-fit: fill) 🚨 */
         .img-wrap { flex: 50; border: 1px solid var(--border-soft); border-radius: 12px; overflow: hidden; display: flex; align-items: center; justify-content: center; background: #fff; position: relative; outline: none; transition: 0.2s;}
         .img-wrap:focus { border-color: var(--primary-medical); box-shadow: 0 0 0 4px rgba(0,91,150,0.1); }
         
         .vertical-img-container { display: flex; flex-direction: column; width: 100%; height: 100%; }
         .split-img-item { flex: 1; position: relative; width: 100%; height: 50%; overflow: hidden; border-bottom: 1px solid var(--border-soft); background:#fff; }
         .split-img-item:last-child { border-bottom: none; }
-        .split-img-item img { width: 100%; height: 100%; object-fit: fill; } /* 사진 꽉 차게 원상복구 */
+        .split-img-item img { width: 100%; height: 100%; object-fit: fill; } 
         
         .img-idx-badge { position: absolute; bottom: 10px; right: 10px; background: rgba(15,23,42,0.7); color: #fff; padding: 4px 10px; border-radius: 12px; font-size: 13px; font-weight: bold; backdrop-filter: blur(2px);}
         
