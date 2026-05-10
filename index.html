@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>재활 시스템 - 글자 수정 버그 픽스</title>
+    <title>재활 시스템 - 이름 수정(Edit) 버그 완벽 해결</title>
     
     <style id="dynamic-print-style">
         @media print { @page { size: landscape; margin: 0; } }
@@ -161,13 +161,11 @@
                 if (tab === 'management') {
                     window.isAdminMode = true;
                     document.getElementById('patient-panel').style.display = 'none';
-                    document.getElementById('sidebar-patient-inputs').style.display = 'none';
                     document.getElementById('macro-management-section').style.display = 'block'; 
                     document.getElementById('preview-area').style.right = '0'; 
                 } else {
                     window.isAdminMode = false;
                     document.getElementById('patient-panel').style.display = 'block';
-                    document.getElementById('sidebar-patient-inputs').style.display = 'flex';
                     document.getElementById('macro-management-section').style.display = 'none';
                     document.getElementById('preview-area').style.right = '340px'; 
                 }
@@ -533,7 +531,6 @@
             e.currentTarget.parentElement.classList.toggle('open');
         }
 
-        // 🌟 수정사항 반영: 드래그 앤 드롭과 contenteditable 충돌 완벽 방지 🌟
         function renderControls(forceOpenCat = null, forceOpenFold = null) {
             const c = document.getElementById('controls');
             if(!c) return;
@@ -560,7 +557,6 @@
                 if (iA !== -1 && iB !== -1) return iA - iB; if (iA !== -1) return -1; if (iB !== -1) return 1; return a.localeCompare(b); 
             });
 
-            // 관리자(수정) 모드일 땐 드래그 기능을 완전히 꺼버림 (글자 클릭 버그 원천 차단)
             const isDraggable = !window.isAdminMode;
 
             for (const joint of currentCategories) {
@@ -723,6 +719,19 @@
             --shadow-hover: 0 6px 16px rgba(0,0,0,0.1);
         }
 
+        /* 🚨 핵심 픽스: contenteditable 텍스트 편집 강제 허용 🚨 */
+        [contenteditable="true"] {
+            user-select: text !important;
+            -webkit-user-select: text !important;
+            cursor: text !important;
+            outline: none;
+        }
+        [contenteditable="true"]:focus {
+            background: #fff !important;
+            border: 1px dashed var(--primary-medical) !important;
+            box-shadow: 0 0 0 2px rgba(0,91,150,0.1);
+        }
+
         body { font-family: 'Pretendard', sans-serif; margin: 0; display: flex; background: var(--bg-color); overflow: hidden; color: #333; }
         
         ::-webkit-scrollbar { width: 6px; }
@@ -815,9 +824,7 @@
 
         .exercise-item { font-size: 13px; padding: 6px 12px 6px 36px; transition: 0.2s; border-radius: 4px; margin: 0 8px 2px 8px; }
         .draggable-item:hover { background: #f0f7ff; }
-        
-        /* 🚨 글씨 클릭 시 커서 모양 명확히 하기 🚨 */
-        .exercise-title-text:focus { outline: 2px solid var(--primary-medical); background: #f0f7ff !important; }
+        .draggable-item:active { opacity: 0.5; }
 
         .custom-checkbox { width: 16px; height: 16px; cursor: pointer; accent-color: var(--primary-medical); }
 
@@ -873,7 +880,6 @@
         .page-content { flex: 1; display: flex; gap: 20px; overflow: hidden; margin-bottom: 5mm;}
         
         .img-wrap { flex: 50; border: 1px solid var(--border-soft); border-radius: 12px; overflow: hidden; display: flex; align-items: center; justify-content: center; background: #fff; position: relative; outline: none; transition: 0.2s;}
-        .img-wrap:focus { border-color: var(--primary-medical); box-shadow: 0 0 0 4px rgba(0,91,150,0.1); }
         
         .vertical-img-container { display: flex; flex-direction: column; width: 100%; height: 100%; }
         .split-img-item { flex: 1; position: relative; width: 100%; height: 50%; overflow: hidden; border-bottom: 1px solid var(--border-soft); background:#fff; }
@@ -893,9 +899,6 @@
         .macro-badge { padding: 6px 10px; font-size: 11px; background: var(--surface); border: 1px solid var(--border-soft); border-radius: 6px; cursor: pointer; font-weight: bold; color: #475569; pointer-events: auto; transition: 0.2s; box-shadow: 0 1px 2px rgba(0,0,0,0.05);}
         .macro-badge:hover { border-color: var(--primary-medical); color: var(--primary-medical); transform: translateY(-1px); }
         
-        .editable-desc { flex: 1; font-size: 12pt; line-height: 1.7; border: 1px solid var(--border-soft); padding: 15px; border-radius: 8px; overflow-y: auto; background: var(--surface); min-height: 0; transition: 0.2s; color: #334155;}
-        .editable-desc:focus { outline: none; border-color: var(--primary-medical); box-shadow: 0 0 0 3px rgba(0,91,150,0.1); }
-        
         .qr-box { position: absolute; bottom: 15px; right: 15px; background: var(--surface); padding: 6px; border-radius: 10px; border: 1px solid var(--border-soft); box-shadow: var(--shadow-hover);}
         .qr-img { width: 80px; height: 80px; display: block; }
         .page-footer { margin-top: auto; border-top: 1px solid var(--border-soft); padding-top: 10px; display: flex; justify-content: flex-end; align-items: center; pointer-events: none;}
@@ -909,7 +912,6 @@
         .portrait-mode .page-content { flex-direction: column; gap: 15px; }
         .portrait-mode .img-wrap { height: 60%; width: 100%; flex: none; } 
         .portrait-mode .exercise-details { height: 40%; width: 100%; flex: none; display: flex; flex-direction: column; } 
-        .portrait-mode .editable-desc { font-size: 13pt; min-height: 0; } 
 
         @media print {
             #sidebar, #patient-panel, #bottom-nav, .no-print, #login-overlay, .top-right-controls, #custom-modal-overlay { display: none !important; }
