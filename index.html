@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>재활 시스템 - 선택 목록(장바구니) 및 동선 최적화</title>
+    <title>재활 시스템 - 선택 목록(장바구니) 및 동선 최적화 (사진 원상복구)</title>
     
     <style id="dynamic-print-style">
         @media print { @page { size: landscape; margin: 0; } }
@@ -243,7 +243,7 @@
         window.savePatientRoutine = async function() {
             const pName = document.getElementById('pIn').value.trim(); const chartID = document.getElementById('chartIn').value.trim();
             const pMemo = document.getElementById('pMemo').value.trim(); const loggedInID = sessionStorage.getItem('loggedInID');
-            if (!pName || !chartID) return await CustomModal.alert("우측 패널에 환자 성함과 병록번호를 모두 입력해주세요."); 
+            if (!pName || !chartID) return await CustomModal.alert("상단 입력창에 환자 성함과 병록번호를 모두 입력해주세요."); 
             if (window.selectedExercises.length === 0) return await CustomModal.alert("처방할 운동을 1개 이상 선택해주세요.");
             
             const routineData = window.selectedExercises.map(ex => { const descBox = document.getElementById(`desc_${ex.id}`); return { ...ex, customDesc: descBox ? descBox.innerHTML : "" }; });
@@ -614,13 +614,12 @@
             filterExercises();
         }
 
-        // 🌟 칩 렌더링 함수 🌟
         window.renderSelectedChips = function() {
             const container = document.getElementById('chip-list');
             const header = document.querySelector('#selected-chips-container > div');
             if(!container || !header) return;
 
-            header.innerText = `현재 선택된 운동 (${window.selectedExercises.length}개)`;
+            header.innerText = `현재 담긴 운동 (${window.selectedExercises.length}개)`;
             container.innerHTML = "";
 
             if(window.selectedExercises.length === 0) {
@@ -642,11 +641,13 @@
                 if (window.exerciseData[item.joint]) { for (let folder in window.exerciseData[item.joint]) { if (window.exerciseData[item.joint][folder].includes(item.name)) return true; } } return false; 
             });
 
-            // 🌟 칩 렌더링 호출 🌟
             if(window.renderSelectedChips) window.renderSelectedChips();
 
             const container = document.getElementById('page-container');
-            const pName = document.getElementById('pIn').value || "________"; const tName = sessionStorage.getItem('loggedInName') || "________";
+            
+            const pName = document.getElementById('pIn')?.value || "________"; 
+            const tName = sessionStorage.getItem('loggedInName') || "________";
+            
             container.innerHTML = "";
             
             if (window.selectedExercises.length === 0) { 
@@ -749,13 +750,22 @@
         .login-box button { width: 100%; padding: 12px; background: var(--primary-medical); color: white; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; margin-top:10px; box-sizing: border-box; transition: 0.2s; font-size: 15px;}
         .login-box button:hover { background: #004c80; transform: translateY(-2px); box-shadow: 0 4px 10px rgba(0,91,150,0.3); }
         
-        #main-app-container, #admin-app-container, #bottom-nav, .top-right-controls { display: none; }
+        #main-app-container, #admin-app-container, #bottom-nav { display: none; }
+        
+        .top-right-controls { display: none; position: fixed; top: 15px; right: 360px; gap: 10px; z-index: 1000; align-items: center; }
+
+        .top-patient-inputs { display: flex; align-items: center; background: var(--surface); border: 1px solid var(--border-soft); border-radius: 20px; padding: 5px 15px; box-shadow: var(--shadow-soft); height: 36px; box-sizing: border-box; transition: 0.2s; }
+        .top-patient-inputs:focus-within { border-color: var(--primary-medical); box-shadow: 0 0 0 3px rgba(0,91,150,0.15); }
+        .top-patient-inputs input { border: none; outline: none; background: transparent; font-size: 13px; font-weight: bold; color: #334155; }
+        .top-patient-inputs #pIn { width: 110px; }
+        .top-patient-inputs #chartIn { width: 90px; }
+        .top-patient-inputs .divider { width: 1px; height: 16px; background: #cbd5e1; margin: 0 10px; }
 
         #main-app-container { width: 100%; height: 100vh; }
         #sidebar { width: 300px; height: 100vh; background: var(--surface); padding: 20px; overflow-y: auto; border-right: 1px solid var(--border-soft); box-sizing: border-box; z-index: 10; padding-bottom: 80px; box-shadow: 2px 0 10px rgba(0,0,0,0.02); }
         #patient-panel { width: 340px; height: 100vh; background: #f8fafc; padding: 20px; position: fixed; right: 0; top: 0; border-left: 1px solid var(--border-soft); box-sizing: border-box; overflow-y: auto; z-index: 10; padding-bottom: 80px; box-shadow: -2px 0 10px rgba(0,0,0,0.02); }
         
-        #preview-area { position: fixed; left: 300px; right: 340px; top: 0; bottom: 0; overflow: auto; padding-top: 60px; padding-bottom: 80px; box-sizing: border-box; transition: right 0.3s; background: var(--bg-color); }
+        #preview-area { position: fixed; left: 300px; right: 340px; top: 0; bottom: 0; overflow: auto; padding-top: 70px; padding-bottom: 80px; box-sizing: border-box; transition: right 0.3s; background: var(--bg-color); }
         #page-container { display: flex; flex-direction: column; align-items: center; transform: scale(0.8); transform-origin: top center; margin-bottom: -15%; min-height: 100%; width: 100%;}
         
         #admin-app-container { width: 100%; height: 100vh; justify-content: center; align-items: center; background: var(--bg-color); }
@@ -766,11 +776,10 @@
         .tab-btn.active { color: var(--primary-medical); background: #f0f7ff; box-shadow: inset 0 4px 0 var(--primary-medical); }
         .tab-btn:hover:not(.active) { background: #f8fafc; color: #64748b; }
 
-        .top-right-controls { position: fixed; top: 15px; right: 360px; gap: 10px; z-index: 1000; }
-        .mode-btn { padding: 8px 16px; background: var(--surface); border: 1px solid var(--border-soft); border-radius: 20px; cursor: pointer; font-weight: bold; font-size: 13px; transition: 0.2s; box-shadow: var(--shadow-soft); color: #475569;}
+        .mode-btn { padding: 8px 16px; background: var(--surface); border: 1px solid var(--border-soft); border-radius: 20px; cursor: pointer; font-weight: bold; font-size: 13px; transition: 0.2s; box-shadow: var(--shadow-soft); color: #475569; height: 36px; box-sizing: border-box;}
         .mode-btn:hover { box-shadow: var(--shadow-hover); transform: translateY(-1px); }
         .mode-btn.active { background: var(--secondary-medical); color: white; border-color: var(--secondary-medical); }
-        .print-btn-fixed { padding: 8px 20px; background: var(--primary-medical); color: #fff; border: none; border-radius: 20px; cursor: pointer; font-weight: bold; box-shadow: 0 4px 10px rgba(0,91,150,0.3); transition: 0.2s;}
+        .print-btn-fixed { padding: 8px 20px; background: var(--primary-medical); color: #fff; border: none; border-radius: 20px; cursor: pointer; font-weight: bold; box-shadow: 0 4px 10px rgba(0,91,150,0.3); transition: 0.2s; height: 36px; box-sizing: border-box;}
         .print-btn-fixed:hover { background: #004c80; box-shadow: 0 6px 15px rgba(0,91,150,0.4); transform: translateY(-1px); }
 
         .user-profile { background: #f1f5f9; padding: 12px 15px; border-radius: 10px; margin-bottom: 20px; font-size: 13px; display: flex; justify-content: space-between; align-items: center; }
@@ -805,7 +814,6 @@
 
         .custom-checkbox { width: 16px; height: 16px; cursor: pointer; accent-color: var(--primary-medical); }
 
-        /* 🌟 선택된 칩 디자인 🌟 */
         .sel-chip { display:inline-flex; align-items:center; background: #e0f2fe; color: #0369a1; padding: 6px 10px; border-radius: 12px; font-size: 12px; font-weight: bold; border: 1px solid #bae6fd; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
         .chip-del { margin-left: 6px; cursor: pointer; color: #0ea5e9; transition: 0.2s; font-size:14px; line-height:1;}
         .chip-del:hover { color: var(--danger-red); transform:scale(1.2);}
@@ -851,19 +859,20 @@
 
         .page-header { border-bottom: 3px solid var(--primary-medical); display: flex; justify-content: space-between; align-items: center; padding-bottom: 8px; margin-bottom: 5mm; }
         .page-header h1 { margin: 0; font-size: 24pt; letter-spacing: -1px; color: var(--primary-medical); }
-        .patient-info { font-size: 13pt; color: #334155; }
+        .patient-info { font-size: 13pt; color: #334155; display:flex; align-items:center; gap:8px;}
         .page-delete-btn { background: #ffe4e6; color: var(--danger-red); border: none; border-radius: 6px; width: 32px; height: 32px; font-size: 15px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: 0.2s;}
         .page-delete-btn:hover { background: var(--danger-red); color: white; transform: scale(1.1); }
         
         .page-content { flex: 1; display: flex; gap: 20px; overflow: hidden; margin-bottom: 5mm;}
         
-        .img-wrap { flex: 50; border: 1px solid var(--border-soft); border-radius: 12px; overflow: hidden; display: flex; align-items: center; justify-content: center; background: #f8fafc; position: relative; outline: none; transition: 0.2s;}
+        /* 🚨 원상 복구: object-fit: fill 🚨 */
+        .img-wrap { flex: 50; border: 1px solid var(--border-soft); border-radius: 12px; overflow: hidden; display: flex; align-items: center; justify-content: center; background: #fff; position: relative; outline: none; transition: 0.2s;}
         .img-wrap:focus { border-color: var(--primary-medical); box-shadow: 0 0 0 4px rgba(0,91,150,0.1); }
         
         .vertical-img-container { display: flex; flex-direction: column; width: 100%; height: 100%; }
-        .split-img-item { flex: 1; position: relative; width: 100%; height: 50%; overflow: hidden; border-bottom: 1px solid var(--border-soft); }
+        .split-img-item { flex: 1; position: relative; width: 100%; height: 50%; overflow: hidden; border-bottom: 1px solid var(--border-soft); background:#fff; }
         .split-img-item:last-child { border-bottom: none; }
-        .split-img-item img { width: 100%; height: 100%; object-fit: fill; }
+        .split-img-item img { width: 100%; height: 100%; object-fit: fill; } /* 사진 꽉 차게 원상복구 */
         
         .img-idx-badge { position: absolute; bottom: 10px; right: 10px; background: rgba(15,23,42,0.7); color: #fff; padding: 4px 10px; border-radius: 12px; font-size: 13px; font-weight: bold; backdrop-filter: blur(2px);}
         
@@ -936,6 +945,13 @@
     </div>
 
     <div class="top-right-controls no-print">
+        
+        <div class="top-patient-inputs">
+            <input type="text" id="pIn" placeholder="👤 환자 성함 입력" oninput="renderPreview()">
+            <span class="divider"></span>
+            <input type="text" id="chartIn" placeholder="🔖 병록번호">
+        </div>
+
         <button id="mode-landscape-btn" class="mode-btn active" onclick="setPrintMode('landscape')">🗤 가로 모드</button>
         <button id="mode-portrait-btn" class="mode-btn" onclick="setPrintMode('portrait')">📄 세로 모드</button>
         <button class="print-btn-fixed" onclick="window.print()">🖨️ 인쇄하기</button>
@@ -973,12 +989,6 @@
 
         <div id="patient-panel" class="no-print">
             <div style="font-weight:bold; margin-bottom:15px; color:#475569; font-size:15px;">📋 환자 처방 데이터</div>
-            
-            <div id="sidebar-patient-inputs" style="display:flex; gap:8px; margin-bottom:12px;">
-                <input type="text" id="pIn" placeholder="👤 환자 성함 입력" oninput="renderPreview()" class="search-box" style="margin-bottom:0; flex:1;">
-                <input type="text" id="chartIn" placeholder="🔖 병록번호" class="search-box" style="margin-bottom:0; width:110px;">
-            </div>
-
             <textarea id="pMemo" class="secret-memo" placeholder="📝 [치료사 전용] 환자 상태나 특이사항을 기록하세요. (인쇄본에는 출력되지 않습니다.)"></textarea>
             <button class="save-routine-btn" style="width:100%; padding:14px; background:var(--save-teal); color:white; border:none; border-radius:8px; font-weight:bold; font-size:14px; cursor:pointer; margin-bottom:25px; transition:0.2s; box-shadow: 0 4px 10px rgba(0,150,136,0.3);" onclick="savePatientRoutine()">💾 현재 처방 및 메모 저장</button>
             
