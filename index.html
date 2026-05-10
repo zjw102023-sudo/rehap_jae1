@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>재활 시스템 - 이름 수정(Edit) 버그 완벽 해결</title>
+    <title>재활 시스템 - 큰 글씨 최적화</title>
     
     <style id="dynamic-print-style">
         @media print { @page { size: landscape; margin: 0; } }
@@ -161,11 +161,13 @@
                 if (tab === 'management') {
                     window.isAdminMode = true;
                     document.getElementById('patient-panel').style.display = 'none';
+                    document.getElementById('sidebar-patient-inputs').style.display = 'none';
                     document.getElementById('macro-management-section').style.display = 'block'; 
                     document.getElementById('preview-area').style.right = '0'; 
                 } else {
                     window.isAdminMode = false;
                     document.getElementById('patient-panel').style.display = 'block';
+                    document.getElementById('sidebar-patient-inputs').style.display = 'flex';
                     document.getElementById('macro-management-section').style.display = 'none';
                     document.getElementById('preview-area').style.right = '340px'; 
                 }
@@ -719,7 +721,6 @@
             --shadow-hover: 0 6px 16px rgba(0,0,0,0.1);
         }
 
-        /* 🚨 핵심 픽스: contenteditable 텍스트 편집 강제 허용 🚨 */
         [contenteditable="true"] {
             user-select: text !important;
             -webkit-user-select: text !important;
@@ -824,7 +825,8 @@
 
         .exercise-item { font-size: 13px; padding: 6px 12px 6px 36px; transition: 0.2s; border-radius: 4px; margin: 0 8px 2px 8px; }
         .draggable-item:hover { background: #f0f7ff; }
-        .draggable-item:active { opacity: 0.5; }
+        
+        .exercise-title-text:focus { outline: 2px solid var(--primary-medical); background: #f0f7ff !important; }
 
         .custom-checkbox { width: 16px; height: 16px; cursor: pointer; accent-color: var(--primary-medical); }
 
@@ -890,14 +892,20 @@
         
         .exercise-details { flex: 50; display: flex; flex-direction: column; gap: 10px; position: relative; }
         
+        /* 🚨 어르신 배려: 폰트 사이즈 대폭 증가 🚨 */
         .exercise-title-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
-        .exercise-title-row h3 { margin: 0; font-size: 22pt; color: #1e293b; line-height: 1.2; flex: 1; word-break: keep-all; pointer-events: none;}
+        .exercise-title-row h3 { margin: 0; font-size: 26pt; color: #1e293b; line-height: 1.2; flex: 1; word-break: keep-all; pointer-events: none;}
+        
         .save-btn { padding: 6px 14px; background: #d1fae5; color: #047857; border: 1px solid #34d399; border-radius: 6px; font-size: 13px; font-weight: bold; cursor: pointer; transition: 0.2s;}
         .save-btn:hover { background: var(--save-teal); color: white; }
         
         .macro-btns { display: flex; gap: 6px; flex-wrap: wrap; pointer-events: none;}
-        .macro-badge { padding: 6px 10px; font-size: 11px; background: var(--surface); border: 1px solid var(--border-soft); border-radius: 6px; cursor: pointer; font-weight: bold; color: #475569; pointer-events: auto; transition: 0.2s; box-shadow: 0 1px 2px rgba(0,0,0,0.05);}
+        .macro-badge { padding: 8px 12px; font-size: 13px; background: var(--surface); border: 1px solid var(--border-soft); border-radius: 6px; cursor: pointer; font-weight: bold; color: #475569; pointer-events: auto; transition: 0.2s; box-shadow: 0 1px 2px rgba(0,0,0,0.05);}
         .macro-badge:hover { border-color: var(--primary-medical); color: var(--primary-medical); transform: translateY(-1px); }
+        
+        /* 🚨 어르신 배려: 폰트 사이즈 대폭 증가 🚨 */
+        .editable-desc { flex: 1; font-size: 16pt; line-height: 1.7; border: 1px solid var(--border-soft); padding: 15px; border-radius: 8px; overflow-y: auto; background: var(--surface); min-height: 0; transition: 0.2s; color: #334155;}
+        .editable-desc:focus { outline: none; border-color: var(--primary-medical); box-shadow: 0 0 0 3px rgba(0,91,150,0.1); }
         
         .qr-box { position: absolute; bottom: 15px; right: 15px; background: var(--surface); padding: 6px; border-radius: 10px; border: 1px solid var(--border-soft); box-shadow: var(--shadow-hover);}
         .qr-img { width: 80px; height: 80px; display: block; }
@@ -912,6 +920,8 @@
         .portrait-mode .page-content { flex-direction: column; gap: 15px; }
         .portrait-mode .img-wrap { height: 60%; width: 100%; flex: none; } 
         .portrait-mode .exercise-details { height: 40%; width: 100%; flex: none; display: flex; flex-direction: column; } 
+        /* 🚨 세로모드 어르신 배려: 공간이 많으므로 폰트 더 크게 🚨 */
+        .portrait-mode .editable-desc { font-size: 18pt; min-height: 0; } 
 
         @media print {
             #sidebar, #patient-panel, #bottom-nav, .no-print, #login-overlay, .top-right-controls, #custom-modal-overlay { display: none !important; }
