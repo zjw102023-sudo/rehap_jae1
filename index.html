@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>재활 시스템 - 글자 크기 안정화</title>
+    <title>재활 시스템 - 폴더 유지 및 모든 기능 완벽 통합</title>
     
     <style id="dynamic-print-style">
         @media print { @page { size: landscape; margin: 0; } }
@@ -482,13 +482,14 @@
 
         window.searchPatients = function() { renderPatientList(); };
 
+        // 🚨 닫힘 버그 수정: 검색창 비어있을 때 강제 닫기 로직 제거 🚨
         window.filterExercises = function() {
             const keyword = document.getElementById('searchEx').value.toLowerCase().trim();
             if (keyword === "") {
                 document.querySelectorAll('.exercise-item').forEach(item => item.style.display = 'flex');
                 document.querySelectorAll('.folder-box, .category-box').forEach(box => {
                     box.style.display = 'block';
-                    box.classList.remove('open'); 
+                    // 주의: 여기서 box.classList.remove('open') 하면 기껏 기억한 폴더가 다 닫혀버림!
                 });
                 return;
             }
@@ -531,6 +532,7 @@
             e.currentTarget.parentElement.classList.toggle('open');
         }
 
+        // 🚨 닫힘 버그 수정: innerText를 사용하여 열림 상태 정확히 추적 🚨
         function renderControls(forceOpenCat = null, forceOpenFold = null) {
             const c = document.getElementById('controls');
             if(!c) return;
@@ -891,7 +893,7 @@
         
         .exercise-details { flex: 50; display: flex; flex-direction: column; gap: 10px; position: relative; }
         
-        /* 🚨 글씨 크기 원상 복구 (황금 비율) 🚨 */
+        /* 🚨 폰트 사이즈 원상 복구 (안 잘리는 황금 비율) 🚨 */
         .exercise-title-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
         .exercise-title-row h3 { margin: 0; font-size: 22pt; color: #1e293b; line-height: 1.2; flex: 1; word-break: keep-all; pointer-events: none;}
         
