@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>재활 시스템 - 폴더 유지 및 모든 기능 완벽 통합</title>
+    <title>재활 시스템 - 관절 추가 & 매크로 제거 최적화</title>
     
     <style id="dynamic-print-style">
         @media print { @page { size: landscape; margin: 0; } }
@@ -30,7 +30,6 @@
         window.exerciseImages = {}; 
         window.exerciseVideos = {}; 
         window.patientDB = {}; 
-        window.macroList = ["10회 x 3세트 진행합니다.", "15회 x 3세트 진행합니다.", "🚨 주의: 통증 발생 시 즉시 중단하세요."]; 
         window.isAdminMode = false; 
         window.selectedExercises = []; 
         window.keyMigrations = {}; 
@@ -124,11 +123,8 @@
                 const vidSnap = await getDoc(doc(db, "settings", "exerciseVideos"));
                 if (vidSnap.exists()) window.exerciseVideos = vidSnap.data();
 
-                const macSnap = await getDoc(doc(db, "settings", "macros"));
-                if (macSnap.exists() && macSnap.data().list) window.macroList = macSnap.data().list;
-
             } catch (e) { console.error(e); }
-            renderControls(); renderPatientList(); renderPreview(); renderMacroList();
+            renderControls(); renderPatientList(); renderPreview();
         }
 
         window.attemptLogin = async function() {
@@ -161,12 +157,14 @@
                 if (tab === 'management') {
                     window.isAdminMode = true;
                     document.getElementById('patient-panel').style.display = 'none';
-                    document.getElementById('macro-management-section').style.display = 'block'; 
+                    // 🌟 운동 관리 탭일 때 관절 추가 버튼 보이기 🌟
+                    document.getElementById('management-controls').style.display = 'block'; 
                     document.getElementById('preview-area').style.right = '0'; 
                 } else {
                     window.isAdminMode = false;
                     document.getElementById('patient-panel').style.display = 'block';
-                    document.getElementById('macro-management-section').style.display = 'none';
+                    // 🌟 처방 탭일 때 관절 추가 버튼 숨기기 🌟
+                    document.getElementById('management-controls').style.display = 'none'; 
                     document.getElementById('preview-area').style.right = '340px'; 
                 }
                 renderControls(); renderPreview();
@@ -285,9 +283,13 @@
             window.exerciseDescriptions[id] = text; await CustomModal.alert("공용 데이터(원본)가 영구적으로 업데이트되었습니다.");
         };
 
+        // 🌟 새로운 관절(대분류) 추가 로직 🌟
         window.addCategory = async function() { 
-            syncDOMtoData(); const n = await CustomModal.prompt("추가할 대분류(부위) 명을 입력하세요:"); 
-            if(n && !window.exerciseData[n]) { window.exerciseData[n] = {"스트레칭": [], "운동": []}; renderControls(n); } 
+            syncDOMtoData(); const n = await CustomModal.prompt("추가할 관절(대분류) 명을 입력하세요 (예: 발가락, 턱관절 등):"); 
+            if(n && !window.exerciseData[n]) { 
+                window.exerciseData[n] = {"스트레칭": [], "운동": []}; 
+                renderControls(n); 
+            } 
         }
         window.deleteCategory = async function(btn) { 
             syncDOMtoData(); const catTitle = btn.closest('.category-box').querySelector('.category-title-text').innerText.trim(); 
@@ -309,24 +311,6 @@
             const catTitle = btn.closest('.category-box').querySelector('.category-title-text').innerText.trim(); const fTitle = btn.closest('.folder-box').querySelector('.folder-title-text').innerText.trim(); 
             const n = await CustomModal.prompt(`[${fTitle}] 폴더에 추가할 운동명을 입력하세요:`); 
             if(n) { window.exerciseData[catTitle][fTitle].push(n); renderControls(catTitle, fTitle); } 
-        }
-        
-        window.addGlobalMacro = async function() {
-            const text = await CustomModal.prompt("새로운 매크로 문구를 입력하세요:");
-            if(text) { window.macroList.push(text); await setDoc(doc(db, "settings", "macros"), { list: window.macroList }); renderMacroList(); renderPreview(); }
-        };
-        window.deleteGlobalMacro = async function(idx) {
-            if(await CustomModal.confirm("이 매크로를 삭제하시겠습니까?")) { window.macroList.splice(idx, 1); await setDoc(doc(db, "settings", "macros"), { list: window.macroList }); renderMacroList(); renderPreview(); }
-        };
-        function renderMacroList() {
-            const container = document.getElementById('macro-edit-list'); if(!container) return; container.innerHTML = "";
-            window.macroList.forEach((m, idx) => {
-                container.innerHTML += `
-                    <div style="display:flex; justify-content:space-between; align-items:center; background:#f8faff; border:1px solid #cce5ff; padding:10px; margin-bottom:5px; border-radius:6px; font-size:13px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
-                        <span style="flex:1;">${m}</span>
-                        <button onclick="deleteGlobalMacro(${idx})" class="btn-icon" style="color:#e63946;">❌</button>
-                    </div>`;
-            });
         }
 
         function removeDeletedFromSelection() {
@@ -391,7 +375,6 @@
         };
 
         window.setVideoLink = async function(id) { const currentUrl = window.exerciseVideos[id] || ""; const url = await CustomModal.prompt("유튜브(영상) 주소:", currentUrl); if (url !== null) { try { await setDoc(doc(db, "settings", "exerciseVideos"), { [id]: url }, { merge: true }); window.exerciseVideos[id] = url; renderPreview(); } catch(e) { await CustomModal.alert("저장 실패!"); } } };
-        window.addMacro = function(id, text) { const descBox = document.getElementById(`desc_${id}`); descBox.innerHTML += (descBox.innerHTML.trim() === '' ? '' : '<br>') + `▶ ${text}`; };
 
         window.processAndSaveImage = function(file, id) {
             const reader = new FileReader(); reader.readAsDataURL(file);
@@ -482,14 +465,12 @@
 
         window.searchPatients = function() { renderPatientList(); };
 
-        // 🚨 닫힘 버그 수정: 검색창 비어있을 때 강제 닫기 로직 제거 🚨
         window.filterExercises = function() {
             const keyword = document.getElementById('searchEx').value.toLowerCase().trim();
             if (keyword === "") {
                 document.querySelectorAll('.exercise-item').forEach(item => item.style.display = 'flex');
                 document.querySelectorAll('.folder-box, .category-box').forEach(box => {
                     box.style.display = 'block';
-                    // 주의: 여기서 box.classList.remove('open') 하면 기껏 기억한 폴더가 다 닫혀버림!
                 });
                 return;
             }
@@ -532,7 +513,6 @@
             e.currentTarget.parentElement.classList.toggle('open');
         }
 
-        // 🚨 닫힘 버그 수정: innerText를 사용하여 열림 상태 정확히 추적 🚨
         function renderControls(forceOpenCat = null, forceOpenFold = null) {
             const c = document.getElementById('controls');
             if(!c) return;
@@ -574,7 +554,7 @@
                             <span class="toggle-icon">▶</span>
                             <span class="category-title-text" contenteditable="${window.isAdminMode}" data-old-key="${joint}" style="${window.isAdminMode ? 'background:#fff; border:1px dashed #aaa; padding:2px 4px; border-radius:4px; cursor:text;' : ''}" onclick="if(window.isAdminMode) { event.stopPropagation(); this.focus(); }">${joint}</span>
                         </div>
-                        ${window.isAdminMode ? `<div><button onclick="addFolder(this, event)" class="btn-icon">📁+</button> <button onclick="deleteCategory(this)" class="btn-icon btn-danger-icon">🗑️</button></div>` : ''}
+                        ${window.isAdminMode ? `<div><button onclick="addFolder(this, event)" class="btn-icon" title="폴더 추가">📁+</button> <button onclick="deleteCategory(this)" class="btn-icon btn-danger-icon" title="관절 삭제">🗑️</button></div>` : ''}
                     </div>
                     <div class="accordion-content category-content"></div>
                 `;
@@ -592,7 +572,7 @@
                                 <span class="toggle-icon">▶</span> 📂 
                                 <span class="folder-title-text" contenteditable="${window.isAdminMode}" style="${window.isAdminMode ? 'background:#fff; border:1px dashed #aaa; padding:2px 4px; border-radius:4px; cursor:text;' : ''}" onclick="if(window.isAdminMode) { event.stopPropagation(); this.focus(); }">${folder}</span>
                             </div>
-                            ${window.isAdminMode ? `<div><button onclick="addExercise(this, event)" class="btn-icon">➕</button> <button onclick="deleteFolder(this, event)" class="btn-icon btn-danger-icon">🗑️</button></div>` : ''}
+                            ${window.isAdminMode ? `<div><button onclick="addExercise(this, event)" class="btn-icon" title="운동 추가">➕</button> <button onclick="deleteFolder(this, event)" class="btn-icon btn-danger-icon" title="폴더 삭제">🗑️</button></div>` : ''}
                         </div>
                         <div class="accordion-content folder-content"></div>
                     `;
@@ -608,7 +588,7 @@
                             <span class="exercise-title-text" contenteditable="${window.isAdminMode}" data-old-ex-key="${ex}" 
                                   style="${window.isAdminMode ? 'background:#fff; border:1px dashed #aaa; padding:2px 4px; border-radius:4px; flex:1; cursor:text;' : 'flex:1; cursor:grab;'}" 
                                   onclick="if(window.isAdminMode) { event.stopPropagation(); this.focus(); }">${ex}</span>
-                            ${window.isAdminMode ? `<button onclick="deleteExercise(this, '${ex}', event)" class="btn-icon btn-danger-icon" style="margin-left:auto;">❌</button>` : ''}
+                            ${window.isAdminMode ? `<button onclick="deleteExercise(this, '${ex}', event)" class="btn-icon btn-danger-icon" style="margin-left:auto;" title="운동 삭제">❌</button>` : ''}
                         </div>`;
                     }); 
                     catContent.appendChild(fDiv);
@@ -681,8 +661,6 @@
                         <input type="file" id="f_${id}" accept="image/*" style="display:none" onchange="uploadLocalFile(this, '${id}')">
                     </div>` : '';
                 
-                let dynamicMacros = window.macroList.map(m => `<button onclick="addMacro('${id}', '${m}')" class="macro-badge">${m.includes('🚨') ? `<span style="color:var(--danger-red);">${m}</span>` : m}</button>`).join('');
-
                 container.innerHTML += `
                 <div class="a4-page drop-zone-page" id="preview_${id}" ondragover="handleDragOverPage(event)" ondragleave="handleDragLeavePage(event)" ondrop="dropOnPage(event, ${idx})">
                     <div class="page-header">
@@ -699,7 +677,6 @@
                                 <h3>[${item.joint}] ${item.name}</h3>
                                 ${window.isAdminMode ? `<button class="no-print save-btn" onclick="saveMasterDescription('${id}', document.getElementById('desc_${id}').innerHTML)" title="원본 저장">💾 원본저장</button>` : ''}
                             </div>
-                            <div class="macro-btns no-print">${dynamicMacros}</div>
                             <div contenteditable="true" id="desc_${id}" class="editable-desc">${descText}</div>
                             ${qrHtml}
                         </div>
@@ -893,16 +870,11 @@
         
         .exercise-details { flex: 50; display: flex; flex-direction: column; gap: 10px; position: relative; }
         
-        /* 🚨 폰트 사이즈 원상 복구 (안 잘리는 황금 비율) 🚨 */
         .exercise-title-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
         .exercise-title-row h3 { margin: 0; font-size: 22pt; color: #1e293b; line-height: 1.2; flex: 1; word-break: keep-all; pointer-events: none;}
         
         .save-btn { padding: 6px 14px; background: #d1fae5; color: #047857; border: 1px solid #34d399; border-radius: 6px; font-size: 13px; font-weight: bold; cursor: pointer; transition: 0.2s;}
         .save-btn:hover { background: var(--save-teal); color: white; }
-        
-        .macro-btns { display: flex; gap: 6px; flex-wrap: wrap; pointer-events: none;}
-        .macro-badge { padding: 6px 10px; font-size: 11px; background: var(--surface); border: 1px solid var(--border-soft); border-radius: 6px; cursor: pointer; font-weight: bold; color: #475569; pointer-events: auto; transition: 0.2s; box-shadow: 0 1px 2px rgba(0,0,0,0.05);}
-        .macro-badge:hover { border-color: var(--primary-medical); color: var(--primary-medical); transform: translateY(-1px); }
         
         .editable-desc { flex: 1; font-size: 12pt; line-height: 1.7; border: 1px solid var(--border-soft); padding: 15px; border-radius: 8px; overflow-y: auto; background: var(--surface); min-height: 0; transition: 0.2s; color: #334155;}
         .editable-desc:focus { outline: none; border-color: var(--primary-medical); box-shadow: 0 0 0 3px rgba(0,91,150,0.1); }
@@ -995,13 +967,14 @@
             
             <input type="text" id="searchEx" class="search-box no-print" placeholder="🔍 운동 검색 (예: 스쿼트)" oninput="filterExercises()" style="margin-top:10px;">
             
+            <div id="management-controls" style="display:none; margin-bottom: 10px;">
+                <button onclick="addCategory()" style="width:100%; padding:10px; background:var(--secondary-medical); color:white; border:none; border-radius:6px; font-weight:bold; cursor:pointer; box-shadow:var(--shadow-soft);">➕ 새 관절(대분류) 추가</button>
+            </div>
+            
             <div id="controls"></div>
 
             <div id="macro-management-section" style="display:none; margin-top:30px; border-top:2px dashed var(--border-soft); padding-top:20px;">
-                <div style="font-weight:bold; margin-bottom:15px; color:var(--primary-medical);">💬 커스텀 매크로 관리</div>
-                <div id="macro-edit-list" style="margin-bottom:15px;"></div>
-                <button onclick="addGlobalMacro()" style="width:100%; padding:10px; background:var(--secondary-medical); color:white; border:none; border-radius:6px; font-weight:bold; cursor:pointer; transition:0.2s; box-shadow:var(--shadow-soft);">➕ 새 매크로 추가</button>
-            </div>
+                </div>
         </div>
 
         <div id="patient-panel" class="no-print">
