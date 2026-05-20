@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>재활 시스템 - 관절 추가 & 매크로 제거 최적화</title>
+    <title>재활 시스템 - 운동 가나다순 정렬 적용</title>
     
     <style id="dynamic-print-style">
         @media print { @page { size: landscape; margin: 0; } }
@@ -30,6 +30,7 @@
         window.exerciseImages = {}; 
         window.exerciseVideos = {}; 
         window.patientDB = {}; 
+        window.macroList = ["10회 x 3세트 진행합니다.", "15회 x 3세트 진행합니다.", "🚨 주의: 통증 발생 시 즉시 중단하세요."]; 
         window.isAdminMode = false; 
         window.selectedExercises = []; 
         window.keyMigrations = {}; 
@@ -123,8 +124,11 @@
                 const vidSnap = await getDoc(doc(db, "settings", "exerciseVideos"));
                 if (vidSnap.exists()) window.exerciseVideos = vidSnap.data();
 
+                const macSnap = await getDoc(doc(db, "settings", "macros"));
+                if (macSnap.exists() && macSnap.data().list) window.macroList = macSnap.data().list;
+
             } catch (e) { console.error(e); }
-            renderControls(); renderPatientList(); renderPreview();
+            renderControls(); renderPatientList(); renderPreview(); renderMacroList();
         }
 
         window.attemptLogin = async function() {
@@ -157,13 +161,11 @@
                 if (tab === 'management') {
                     window.isAdminMode = true;
                     document.getElementById('patient-panel').style.display = 'none';
-                    // 🌟 운동 관리 탭일 때 관절 추가 버튼 보이기 🌟
                     document.getElementById('management-controls').style.display = 'block'; 
                     document.getElementById('preview-area').style.right = '0'; 
                 } else {
                     window.isAdminMode = false;
                     document.getElementById('patient-panel').style.display = 'block';
-                    // 🌟 처방 탭일 때 관절 추가 버튼 숨기기 🌟
                     document.getElementById('management-controls').style.display = 'none'; 
                     document.getElementById('preview-area').style.right = '340px'; 
                 }
@@ -283,7 +285,6 @@
             window.exerciseDescriptions[id] = text; await CustomModal.alert("공용 데이터(원본)가 영구적으로 업데이트되었습니다.");
         };
 
-        // 🌟 새로운 관절(대분류) 추가 로직 🌟
         window.addCategory = async function() { 
             syncDOMtoData(); const n = await CustomModal.prompt("추가할 관절(대분류) 명을 입력하세요 (예: 발가락, 턱관절 등):"); 
             if(n && !window.exerciseData[n]) { 
@@ -579,7 +580,10 @@
                     
                     const fContent = fDiv.querySelector('.folder-content');
 
-                    exercises.forEach((ex) => {
+                    // 🌟 픽스 포인트: 하위 항목(운동)을 가나다순으로 정렬 🌟
+                    const sortedExercises = [...exercises].sort((a, b) => a.localeCompare(b));
+
+                    sortedExercises.forEach((ex) => {
                         const id = `${joint}_${ex}`; const isChecked = window.selectedExercises.some(s => s.id === id) ? 'checked' : '';
                         
                         fContent.innerHTML += `
@@ -972,9 +976,6 @@
             </div>
             
             <div id="controls"></div>
-
-            <div id="macro-management-section" style="display:none; margin-top:30px; border-top:2px dashed var(--border-soft); padding-top:20px;">
-                </div>
         </div>
 
         <div id="patient-panel" class="no-print">
