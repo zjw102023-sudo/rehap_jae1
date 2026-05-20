@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>재활 시스템 - 무한 로딩 해결 및 최적화</title>
+    <title>재활 시스템 - 글자 서식 에디터 탑재</title>
     
     <style id="dynamic-print-style">
         @media print { @page { size: landscape; margin: 0; } }
@@ -124,8 +124,6 @@
                 if (vidSnap.exists()) window.exerciseVideos = vidSnap.data();
 
             } catch (e) { console.error(e); }
-            
-            // 🚨 픽스: 없는 함수(renderMacroList) 호출 부분 제거됨!
             renderControls(); renderPatientList(); renderPreview(); 
         }
 
@@ -661,7 +659,7 @@
                         ${imgs.length > 0 ? `<button class="img-edit-btn" style="background:var(--danger-red);" onclick="clearImages('${id}')">🗑️ 지우기</button>` : ''}
                         <input type="file" id="f_${id}" accept="image/*" style="display:none" onchange="uploadLocalFile(this, '${id}')">
                     </div>` : '';
-
+                
                 container.innerHTML += `
                 <div class="a4-page drop-zone-page" id="preview_${id}" ondragover="handleDragOverPage(event)" ondragleave="handleDragLeavePage(event)" ondrop="dropOnPage(event, ${idx})">
                     <div class="page-header">
@@ -746,7 +744,16 @@
         
         #main-app-container, #admin-app-container, #bottom-nav { display: none; }
         
-        .top-right-controls { display: none; position: fixed; top: 15px; right: 360px; gap: 10px; z-index: 1000; align-items: center; }
+        /* 🌟 상단 컨트롤 영역 확장 🌟 */
+        .top-right-controls { display: none; position: fixed; top: 15px; left: 320px; right: 360px; justify-content: flex-end; gap: 10px; z-index: 1000; align-items: center; }
+
+        /* 🌟 웹 에디터 툴바 스타일 🌟 */
+        .text-editor-toolbar { display: flex; align-items: center; background: var(--surface); border: 1px solid var(--border-soft); border-radius: 8px; padding: 0 8px; box-shadow: var(--shadow-soft); height: 36px; box-sizing: border-box; gap: 2px; }
+        .text-editor-toolbar button { background: transparent; border: none; cursor: pointer; font-size: 14px; padding: 4px 8px; border-radius: 4px; color: #475569; transition: 0.2s; font-weight: bold; }
+        .text-editor-toolbar button:hover { background: #e2e8f0; color: var(--primary-medical); }
+        .text-editor-toolbar input[type="color"] { border: none; width: 24px; height: 24px; padding: 0; cursor: pointer; background: transparent; border-radius:4px; }
+        .text-editor-toolbar select { border: 1px solid var(--border-soft); border-radius: 4px; padding: 2px 4px; font-size: 12px; color: #475569; outline: none; cursor: pointer; background: transparent; height:24px;}
+        .text-editor-toolbar .divider { width: 1px; height: 16px; background: #cbd5e1; margin: 0 5px; }
 
         .top-patient-inputs { display: flex; align-items: center; background: var(--surface); border: 1px solid var(--border-soft); border-radius: 20px; padding: 5px 15px; box-shadow: var(--shadow-soft); height: 36px; box-sizing: border-box; transition: 0.2s; }
         .top-patient-inputs:focus-within { border-color: var(--primary-medical); box-shadow: 0 0 0 3px rgba(0,91,150,0.15); }
@@ -872,7 +879,6 @@
         
         .exercise-details { flex: 50; display: flex; flex-direction: column; gap: 10px; position: relative; }
         
-        /* 🚨 글씨 크기 정상 (원래 비율) 🚨 */
         .exercise-title-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
         .exercise-title-row h3 { margin: 0; font-size: 22pt; color: #1e293b; line-height: 1.2; flex: 1; word-break: keep-all; pointer-events: none;}
         
@@ -938,6 +944,24 @@
 
     <div class="top-right-controls no-print">
         
+        <div class="text-editor-toolbar" onmousedown="event.preventDefault();">
+            <button onmousedown="event.preventDefault();" onclick="document.execCommand('bold', false, null)" title="굵게"><b>B</b></button>
+            <button onmousedown="event.preventDefault();" onclick="document.execCommand('italic', false, null)" title="기울임"><i>I</i></button>
+            <button onmousedown="event.preventDefault();" onclick="document.execCommand('underline', false, null)" title="밑줄"><u>U</u></button>
+            <div class="divider"></div>
+            <input type="color" onmousedown="event.preventDefault();" onchange="document.execCommand('foreColor', false, this.value)" title="글자색">
+            <div class="divider"></div>
+            <select onmousedown="event.preventDefault();" onchange="document.execCommand('fontSize', false, this.value); this.selectedIndex=0;" title="글자 크기">
+                <option value="" disabled selected>크기</option>
+                <option value="3">기본</option>
+                <option value="4">크게 1</option>
+                <option value="5">크게 2</option>
+                <option value="6">크게 3</option>
+            </select>
+            <div class="divider"></div>
+            <button onmousedown="event.preventDefault();" onclick="document.execCommand('removeFormat', false, null)" title="서식 지우기">🧹</button>
+        </div>
+
         <div class="top-patient-inputs">
             <input type="text" id="pIn" placeholder="👤 환자 성함 입력" oninput="renderPreview()">
             <span class="divider"></span>
