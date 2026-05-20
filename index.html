@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>재활 시스템 - 운동 가나다순 정렬 적용</title>
+    <title>재활 시스템 - 무한 로딩 해결 및 최적화</title>
     
     <style id="dynamic-print-style">
         @media print { @page { size: landscape; margin: 0; } }
@@ -30,7 +30,6 @@
         window.exerciseImages = {}; 
         window.exerciseVideos = {}; 
         window.patientDB = {}; 
-        window.macroList = ["10회 x 3세트 진행합니다.", "15회 x 3세트 진행합니다.", "🚨 주의: 통증 발생 시 즉시 중단하세요."]; 
         window.isAdminMode = false; 
         window.selectedExercises = []; 
         window.keyMigrations = {}; 
@@ -124,11 +123,10 @@
                 const vidSnap = await getDoc(doc(db, "settings", "exerciseVideos"));
                 if (vidSnap.exists()) window.exerciseVideos = vidSnap.data();
 
-                const macSnap = await getDoc(doc(db, "settings", "macros"));
-                if (macSnap.exists() && macSnap.data().list) window.macroList = macSnap.data().list;
-
             } catch (e) { console.error(e); }
-            renderControls(); renderPatientList(); renderPreview(); renderMacroList();
+            
+            // 🚨 픽스: 없는 함수(renderMacroList) 호출 부분 제거됨!
+            renderControls(); renderPatientList(); renderPreview(); 
         }
 
         window.attemptLogin = async function() {
@@ -580,7 +578,6 @@
                     
                     const fContent = fDiv.querySelector('.folder-content');
 
-                    // 🌟 픽스 포인트: 하위 항목(운동)을 가나다순으로 정렬 🌟
                     const sortedExercises = [...exercises].sort((a, b) => a.localeCompare(b));
 
                     sortedExercises.forEach((ex) => {
@@ -664,7 +661,7 @@
                         ${imgs.length > 0 ? `<button class="img-edit-btn" style="background:var(--danger-red);" onclick="clearImages('${id}')">🗑️ 지우기</button>` : ''}
                         <input type="file" id="f_${id}" accept="image/*" style="display:none" onchange="uploadLocalFile(this, '${id}')">
                     </div>` : '';
-                
+
                 container.innerHTML += `
                 <div class="a4-page drop-zone-page" id="preview_${id}" ondragover="handleDragOverPage(event)" ondragleave="handleDragLeavePage(event)" ondrop="dropOnPage(event, ${idx})">
                     <div class="page-header">
@@ -864,6 +861,7 @@
         .page-content { flex: 1; display: flex; gap: 20px; overflow: hidden; margin-bottom: 5mm;}
         
         .img-wrap { flex: 50; border: 1px solid var(--border-soft); border-radius: 12px; overflow: hidden; display: flex; align-items: center; justify-content: center; background: #fff; position: relative; outline: none; transition: 0.2s;}
+        .img-wrap:focus { border-color: var(--primary-medical); box-shadow: 0 0 0 4px rgba(0,91,150,0.1); }
         
         .vertical-img-container { display: flex; flex-direction: column; width: 100%; height: 100%; }
         .split-img-item { flex: 1; position: relative; width: 100%; height: 50%; overflow: hidden; border-bottom: 1px solid var(--border-soft); background:#fff; }
@@ -874,6 +872,7 @@
         
         .exercise-details { flex: 50; display: flex; flex-direction: column; gap: 10px; position: relative; }
         
+        /* 🚨 글씨 크기 정상 (원래 비율) 🚨 */
         .exercise-title-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
         .exercise-title-row h3 { margin: 0; font-size: 22pt; color: #1e293b; line-height: 1.2; flex: 1; word-break: keep-all; pointer-events: none;}
         
