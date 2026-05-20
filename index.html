@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>재활 시스템 - 글자 서식 에디터 탑재</title>
+    <title>재활 시스템 - 워드급 서식 에디터 최적화</title>
     
     <style id="dynamic-print-style">
         @media print { @page { size: landscape; margin: 0; } }
@@ -684,6 +684,35 @@
                 </div>`;
             });
         }
+
+        // 🌟 폰트 크기 변경 함수 (드래그 시 호출) 🌟
+        window.savedRange = null;
+        document.addEventListener('selectionchange', () => {
+            const sel = window.getSelection();
+            if(sel.rangeCount > 0) {
+                let node = sel.anchorNode;
+                if(node && node.nodeType === 3) node = node.parentNode;
+                if(node && node.closest && node.closest('.editable-desc')) {
+                    window.savedRange = sel.getRangeAt(0).cloneRange();
+                }
+            }
+        });
+
+        window.changeFontSize = function(val) {
+            const sel = window.getSelection();
+            if(window.savedRange) {
+                sel.removeAllRanges();
+                sel.addRange(window.savedRange);
+            }
+            document.execCommand("styleWithCSS", false, true);
+            document.execCommand("fontSize", false, "7");
+            var fonts = document.querySelectorAll("font[size='7']");
+            fonts.forEach(function(font) {
+                font.removeAttribute("size");
+                font.style.fontSize = val + "pt";
+                font.style.lineHeight = "1.6"; 
+            });
+        };
     </script>
     <style>
         :root {
@@ -744,15 +773,12 @@
         
         #main-app-container, #admin-app-container, #bottom-nav { display: none; }
         
-        /* 🌟 상단 컨트롤 영역 확장 🌟 */
+        /* 🌟 상단 툴바 레이아웃 (편집기 추가) 🌟 */
         .top-right-controls { display: none; position: fixed; top: 15px; left: 320px; right: 360px; justify-content: flex-end; gap: 10px; z-index: 1000; align-items: center; }
 
-        /* 🌟 웹 에디터 툴바 스타일 🌟 */
-        .text-editor-toolbar { display: flex; align-items: center; background: var(--surface); border: 1px solid var(--border-soft); border-radius: 8px; padding: 0 8px; box-shadow: var(--shadow-soft); height: 36px; box-sizing: border-box; gap: 2px; }
-        .text-editor-toolbar button { background: transparent; border: none; cursor: pointer; font-size: 14px; padding: 4px 8px; border-radius: 4px; color: #475569; transition: 0.2s; font-weight: bold; }
+        .text-editor-toolbar { display: flex; align-items: center; background: var(--surface); border: 1px solid var(--border-soft); border-radius: 20px; padding: 0 10px; box-shadow: var(--shadow-soft); height: 36px; box-sizing: border-box; gap: 3px; }
+        .text-editor-toolbar button { background: transparent; border: none; cursor: pointer; font-size: 14px; padding: 4px 6px; border-radius: 4px; color: #475569; transition: 0.2s; font-weight: bold; display:flex; align-items:center; justify-content:center;}
         .text-editor-toolbar button:hover { background: #e2e8f0; color: var(--primary-medical); }
-        .text-editor-toolbar input[type="color"] { border: none; width: 24px; height: 24px; padding: 0; cursor: pointer; background: transparent; border-radius:4px; }
-        .text-editor-toolbar select { border: 1px solid var(--border-soft); border-radius: 4px; padding: 2px 4px; font-size: 12px; color: #475569; outline: none; cursor: pointer; background: transparent; height:24px;}
         .text-editor-toolbar .divider { width: 1px; height: 16px; background: #cbd5e1; margin: 0 5px; }
 
         .top-patient-inputs { display: flex; align-items: center; background: var(--surface); border: 1px solid var(--border-soft); border-radius: 20px; padding: 5px 15px; box-shadow: var(--shadow-soft); height: 36px; box-sizing: border-box; transition: 0.2s; }
@@ -949,15 +975,16 @@
             <button onmousedown="event.preventDefault();" onclick="document.execCommand('italic', false, null)" title="기울임"><i>I</i></button>
             <button onmousedown="event.preventDefault();" onclick="document.execCommand('underline', false, null)" title="밑줄"><u>U</u></button>
             <div class="divider"></div>
-            <input type="color" onmousedown="event.preventDefault();" onchange="document.execCommand('foreColor', false, this.value)" title="글자색">
+            <button onmousedown="event.preventDefault();" onclick="document.execCommand('foreColor', false, '#e63946')" title="빨간색"><span style="color:#e63946; font-size:16px;">■</span></button>
+            <button onmousedown="event.preventDefault();" onclick="document.execCommand('foreColor', false, '#005b96')" title="파란색"><span style="color:#005b96; font-size:16px;">■</span></button>
+            <button onmousedown="event.preventDefault();" onclick="document.execCommand('foreColor', false, '#333333')" title="검은색(기본)"><span style="color:#333333; font-size:16px;">■</span></button>
             <div class="divider"></div>
-            <select onmousedown="event.preventDefault();" onchange="document.execCommand('fontSize', false, this.value); this.selectedIndex=0;" title="글자 크기">
-                <option value="" disabled selected>크기</option>
-                <option value="3">기본</option>
-                <option value="4">크게 1</option>
-                <option value="5">크게 2</option>
-                <option value="6">크게 3</option>
-            </select>
+            <div style="display:flex; align-items:center; gap:5px; padding: 0 5px;">
+                <span style="font-size:12px; color:#64748b; font-weight:bold; min-width:28px;" id="font-size-val">16pt</span>
+                <input type="range" id="font-size-slider" min="10" max="40" step="2" value="16" style="width:60px; cursor:pointer; accent-color: var(--primary-medical);" 
+                       oninput="document.getElementById('font-size-val').innerText = this.value + 'pt';"
+                       onchange="changeFontSize(this.value)">
+            </div>
             <div class="divider"></div>
             <button onmousedown="event.preventDefault();" onclick="document.execCommand('removeFormat', false, null)" title="서식 지우기">🧹</button>
         </div>
