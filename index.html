@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>재활 시스템 - 워드급 서식 에디터 최적화</title>
+    <title>재활 시스템 - 에디터 및 전체 기능 무손실 통합본</title>
     
     <style id="dynamic-print-style">
         @media print { @page { size: landscape; margin: 0; } }
@@ -34,6 +34,43 @@
         window.selectedExercises = []; 
         window.keyMigrations = {}; 
         window.currentTab = 'prescription';
+        window.lastActiveRange = null; // 🌟 텍스트 드래그 영역 저장용 변수
+
+        // 🌟 에디터 서식 적용 및 포커스 유지 로직 🌟
+        document.addEventListener('selectionchange', () => {
+            const sel = window.getSelection();
+            if (sel.rangeCount > 0) {
+                const range = sel.getRangeAt(0);
+                let container = range.commonAncestorContainer;
+                if (container.nodeType === 3) container = container.parentNode;
+                if (container && container.closest && container.closest('.editable-desc')) {
+                    window.lastActiveRange = range.cloneRange();
+                }
+            }
+        });
+
+        window.applyEditorFormat = function(command, value = null) {
+            const sel = window.getSelection();
+            if (window.lastActiveRange) {
+                sel.removeAllRanges();
+                sel.addRange(window.lastActiveRange);
+            }
+            document.execCommand("styleWithCSS", false, true);
+            if (command === 'fontSizeCustom') {
+                document.execCommand('fontSize', false, '7');
+                const fontElements = document.querySelectorAll("font[size='7']");
+                fontElements.forEach(el => {
+                    el.removeAttribute("size");
+                    el.style.fontSize = value + "pt";
+                    el.style.lineHeight = "1.6";
+                });
+            } else {
+                document.execCommand(command, false, value);
+            }
+            if (sel.rangeCount > 0) {
+                window.lastActiveRange = sel.getRangeAt(0).cloneRange();
+            }
+        };
 
         window.CustomModal = {
             show: function(type, msg, defaultVal = '') {
@@ -282,7 +319,7 @@
         };
 
         window.addCategory = async function() { 
-            syncDOMtoData(); const n = await CustomModal.prompt("추가할 관절(대분류) 명을 입력하세요 (예: 발가락, 턱관절 등):"); 
+            syncDOMtoData(); const n = await CustomModal.prompt("추가할 관절(대분류) 명을 입력하세요:"); 
             if(n && !window.exerciseData[n]) { 
                 window.exerciseData[n] = {"스트레칭": [], "운동": []}; 
                 renderControls(n); 
@@ -684,35 +721,6 @@
                 </div>`;
             });
         }
-
-        // 🌟 폰트 크기 변경 함수 (드래그 시 호출) 🌟
-        window.savedRange = null;
-        document.addEventListener('selectionchange', () => {
-            const sel = window.getSelection();
-            if(sel.rangeCount > 0) {
-                let node = sel.anchorNode;
-                if(node && node.nodeType === 3) node = node.parentNode;
-                if(node && node.closest && node.closest('.editable-desc')) {
-                    window.savedRange = sel.getRangeAt(0).cloneRange();
-                }
-            }
-        });
-
-        window.changeFontSize = function(val) {
-            const sel = window.getSelection();
-            if(window.savedRange) {
-                sel.removeAllRanges();
-                sel.addRange(window.savedRange);
-            }
-            document.execCommand("styleWithCSS", false, true);
-            document.execCommand("fontSize", false, "7");
-            var fonts = document.querySelectorAll("font[size='7']");
-            fonts.forEach(function(font) {
-                font.removeAttribute("size");
-                font.style.fontSize = val + "pt";
-                font.style.lineHeight = "1.6"; 
-            });
-        };
     </script>
     <style>
         :root {
@@ -776,12 +784,16 @@
         /* 🌟 상단 툴바 레이아웃 (편집기 추가) 🌟 */
         .top-right-controls { display: none; position: fixed; top: 15px; left: 320px; right: 360px; justify-content: flex-end; gap: 10px; z-index: 1000; align-items: center; }
 
-        .text-editor-toolbar { display: flex; align-items: center; background: var(--surface); border: 1px solid var(--border-soft); border-radius: 20px; padding: 0 10px; box-shadow: var(--shadow-soft); height: 36px; box-sizing: border-box; gap: 3px; }
+        .text-editor-toolbar { display: flex; align-items: center; background: var(--surface); border: 1px solid var(--border-soft); border-radius: 20px; padding: 0 12px; box-shadow: var(--shadow-soft); height: 38px; box-sizing: border-box; gap: 4px; }
         .text-editor-toolbar button { background: transparent; border: none; cursor: pointer; font-size: 14px; padding: 4px 6px; border-radius: 4px; color: #475569; transition: 0.2s; font-weight: bold; display:flex; align-items:center; justify-content:center;}
         .text-editor-toolbar button:hover { background: #e2e8f0; color: var(--primary-medical); }
-        .text-editor-toolbar .divider { width: 1px; height: 16px; background: #cbd5e1; margin: 0 5px; }
+        .text-editor-toolbar .divider { width: 1px; height: 18px; background: #cbd5e1; margin: 0 5px; }
 
-        .top-patient-inputs { display: flex; align-items: center; background: var(--surface); border: 1px solid var(--border-soft); border-radius: 20px; padding: 5px 15px; box-shadow: var(--shadow-soft); height: 36px; box-sizing: border-box; transition: 0.2s; }
+        .color-palette-board { display: flex; gap: 4px; align-items: center; }
+        .color-swatch { width: 16px; height: 16px; border-radius: 50%; border: 1px solid rgba(0,0,0,0.2); cursor: pointer; transition: transform 0.1s; }
+        .color-swatch:hover { transform: scale(1.2); }
+
+        .top-patient-inputs { display: flex; align-items: center; background: var(--surface); border: 1px solid var(--border-soft); border-radius: 20px; padding: 5px 15px; box-shadow: var(--shadow-soft); height: 38px; box-sizing: border-box; transition: 0.2s; }
         .top-patient-inputs:focus-within { border-color: var(--primary-medical); box-shadow: 0 0 0 3px rgba(0,91,150,0.15); }
         .top-patient-inputs input { border: none; outline: none; background: transparent; font-size: 13px; font-weight: bold; color: #334155; }
         .top-patient-inputs #pIn { width: 110px; }
@@ -792,7 +804,7 @@
         #sidebar { width: 300px; height: 100vh; background: var(--surface); padding: 20px; overflow-y: auto; border-right: 1px solid var(--border-soft); box-sizing: border-box; z-index: 10; padding-bottom: 80px; box-shadow: 2px 0 10px rgba(0,0,0,0.02); }
         #patient-panel { width: 340px; height: 100vh; background: #f8fafc; padding: 20px; position: fixed; right: 0; top: 0; border-left: 1px solid var(--border-soft); box-sizing: border-box; overflow-y: auto; z-index: 10; padding-bottom: 80px; box-shadow: -2px 0 10px rgba(0,0,0,0.02); }
         
-        #preview-area { position: fixed; left: 300px; right: 340px; top: 0; bottom: 0; overflow: auto; padding-top: 70px; padding-bottom: 80px; box-sizing: border-box; transition: right 0.3s; background: var(--bg-color); }
+        #preview-area { position: fixed; left: 300px; right: 340px; top: 0; bottom: 0; overflow: auto; padding-top: 75px; padding-bottom: 80px; box-sizing: border-box; transition: right 0.3s; background: var(--bg-color); }
         #page-container { display: flex; flex-direction: column; align-items: center; transform: scale(0.8); transform-origin: top center; margin-bottom: -15%; min-height: 100%; width: 100%;}
         
         #admin-app-container { width: 100%; height: 100vh; justify-content: center; align-items: center; background: var(--bg-color); }
@@ -803,10 +815,10 @@
         .tab-btn.active { color: var(--primary-medical); background: #f0f7ff; box-shadow: inset 0 4px 0 var(--primary-medical); }
         .tab-btn:hover:not(.active) { background: #f8fafc; color: #64748b; }
 
-        .mode-btn { padding: 8px 16px; background: var(--surface); border: 1px solid var(--border-soft); border-radius: 20px; cursor: pointer; font-weight: bold; font-size: 13px; transition: 0.2s; box-shadow: var(--shadow-soft); color: #475569; height: 36px; box-sizing: border-box;}
+        .mode-btn { padding: 8px 16px; background: var(--surface); border: 1px solid var(--border-soft); border-radius: 20px; cursor: pointer; font-weight: bold; font-size: 13px; transition: 0.2s; box-shadow: var(--shadow-soft); color: #475569; height: 38px; box-sizing: border-box;}
         .mode-btn:hover { box-shadow: var(--shadow-hover); transform: translateY(-1px); }
         .mode-btn.active { background: var(--secondary-medical); color: white; border-color: var(--secondary-medical); }
-        .print-btn-fixed { padding: 8px 20px; background: var(--primary-medical); color: #fff; border: none; border-radius: 20px; cursor: pointer; font-weight: bold; box-shadow: 0 4px 10px rgba(0,91,150,0.3); transition: 0.2s; height: 36px; box-sizing: border-box;}
+        .print-btn-fixed { padding: 8px 20px; background: var(--primary-medical); color: #fff; border: none; border-radius: 20px; cursor: pointer; font-weight: bold; box-shadow: 0 4px 10px rgba(0,91,150,0.3); transition: 0.2s; height: 38px; box-sizing: border-box;}
         .print-btn-fixed:hover { background: #004c80; box-shadow: 0 6px 15px rgba(0,91,150,0.4); transform: translateY(-1px); }
 
         .user-profile { background: #f1f5f9; padding: 12px 15px; border-radius: 10px; margin-bottom: 20px; font-size: 13px; display: flex; justify-content: space-between; align-items: center; }
@@ -971,22 +983,36 @@
     <div class="top-right-controls no-print">
         
         <div class="text-editor-toolbar" onmousedown="event.preventDefault();">
-            <button onmousedown="event.preventDefault();" onclick="document.execCommand('bold', false, null)" title="굵게"><b>B</b></button>
-            <button onmousedown="event.preventDefault();" onclick="document.execCommand('italic', false, null)" title="기울임"><i>I</i></button>
-            <button onmousedown="event.preventDefault();" onclick="document.execCommand('underline', false, null)" title="밑줄"><u>U</u></button>
+            <button onmousedown="event.preventDefault();" onclick="applyEditorFormat('bold')" title="굵게"><b>B</b></button>
+            <button onmousedown="event.preventDefault();" onclick="applyEditorFormat('underline')" title="밑줄"><u>U</u></button>
+            <button onmousedown="event.preventDefault();" onclick="applyEditorFormat('italic')" title="기울임"><i>I</i></button>
             <div class="divider"></div>
-            <button onmousedown="event.preventDefault();" onclick="document.execCommand('foreColor', false, '#e63946')" title="빨간색"><span style="color:#e63946; font-size:16px;">■</span></button>
-            <button onmousedown="event.preventDefault();" onclick="document.execCommand('foreColor', false, '#005b96')" title="파란색"><span style="color:#005b96; font-size:16px;">■</span></button>
-            <button onmousedown="event.preventDefault();" onclick="document.execCommand('foreColor', false, '#333333')" title="검은색(기본)"><span style="color:#333333; font-size:16px;">■</span></button>
+            
+            <div class="color-palette-board" onmousedown="event.preventDefault();">
+                <div class="color-swatch" style="background:#333333;" onclick="applyEditorFormat('foreColor', '#333333')" title="검은색(기본)"></div>
+                <div class="color-swatch" style="background:#e63946;" onclick="applyEditorFormat('foreColor', '#e63946')" title="빨간색"></div>
+                <div class="color-swatch" style="background:#005b96;" onclick="applyEditorFormat('foreColor', '#005b96')" title="파란색"></div>
+                <div class="color-swatch" style="background:#2a9d8f;" onclick="applyEditorFormat('foreColor', '#2a9d8f')" title="초록색"></div>
+                <div class="color-swatch" style="background:#e9c46a;" onclick="applyEditorFormat('foreColor', '#e9c46a')" title="노란색"></div>
+                <div class="color-swatch" style="background:#f4a261;" onclick="applyEditorFormat('foreColor', '#f4a261')" title="주황색"></div>
+                <div class="color-swatch" style="background:#9b51e0;" onclick="applyEditorFormat('foreColor', '#9b51e0')" title="보라색"></div>
+                <div class="color-swatch" style="background:#8b5a2b;" onclick="applyEditorFormat('foreColor', '#8b5a2b')" title="갈색"></div>
+                <div class="color-swatch" style="background:#00b4d8;" onclick="applyEditorFormat('foreColor', '#00b4d8')" title="하늘색"></div>
+                <div class="color-swatch" style="background:#1d3557;" onclick="applyEditorFormat('foreColor', '#1d3557')" title="네이비색"></div>
+                <div class="color-swatch" style="background:#70e000;" onclick="applyEditorFormat('foreColor', '#70e000')" title="연두색"></div>
+                <div class="color-swatch" style="background:#6c757d;" onclick="applyEditorFormat('foreColor', '#6c757d')" title="회색"></div>
+            </div>
+            
             <div class="divider"></div>
-            <div style="display:flex; align-items:center; gap:5px; padding: 0 5px;">
-                <span style="font-size:12px; color:#64748b; font-weight:bold; min-width:28px;" id="font-size-val">16pt</span>
-                <input type="range" id="font-size-slider" min="10" max="40" step="2" value="16" style="width:60px; cursor:pointer; accent-color: var(--primary-medical);" 
+            
+            <div style="display:flex; align-items:center; gap:6px; padding: 0 4px;" onmousedown="event.preventDefault();">
+                <span style="font-size:11px; color:#475569; font-weight:bold; min-width:32px; text-align:center;" id="font-size-val">12pt</span>
+                <input type="range" id="font-size-slider" min="10" max="36" step="1" value="12" style="width:65px; cursor:pointer; accent-color: var(--primary-medical);" 
                        oninput="document.getElementById('font-size-val').innerText = this.value + 'pt';"
-                       onchange="changeFontSize(this.value)">
+                       onchange="applyEditorFormat('fontSizeCustom', this.value)">
             </div>
             <div class="divider"></div>
-            <button onmousedown="event.preventDefault();" onclick="document.execCommand('removeFormat', false, null)" title="서식 지우기">🧹</button>
+            <button onmousedown="event.preventDefault();" onclick="applyEditorFormat('removeFormat')" title="서식 지우기">🧹</button>
         </div>
 
         <div class="top-patient-inputs">
@@ -1021,8 +1047,8 @@
             
             <input type="text" id="searchEx" class="search-box no-print" placeholder="🔍 운동 검색 (예: 스쿼트)" oninput="filterExercises()" style="margin-top:10px;">
             
-            <div id="management-controls" style="display:none; margin-bottom: 10px;">
-                <button onclick="addCategory()" style="width:100%; padding:10px; background:var(--secondary-medical); color:white; border:none; border-radius:6px; font-weight:bold; cursor:pointer; box-shadow:var(--shadow-soft);">➕ 새 관절(대분류) 추가</button>
+            <div id="management-controls" style="display:none; margin-bottom: 12px;">
+                <button onclick="addCategory()" style="width:100%; padding:10px; background:var(--secondary-medical); color:white; border:none; border-radius:6px; font-weight:bold; cursor:pointer;">➕ 새 관절(대분류) 추가</button>
             </div>
             
             <div id="controls"></div>
