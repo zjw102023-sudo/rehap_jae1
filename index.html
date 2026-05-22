@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>재활 시스템 - 에디터 및 전체 기능 무손실 통합본</title>
+    <title>재활 시스템 - 워드급 서식 에디터 픽스</title>
     
     <style id="dynamic-print-style">
         @media print { @page { size: landscape; margin: 0; } }
@@ -34,7 +34,7 @@
         window.selectedExercises = []; 
         window.keyMigrations = {}; 
         window.currentTab = 'prescription';
-        window.lastActiveRange = null; // 🌟 텍스트 드래그 영역 저장용 변수
+        window.lastActiveRange = null; 
 
         // 🌟 에디터 서식 적용 및 포커스 유지 로직 🌟
         document.addEventListener('selectionchange', () => {
@@ -325,21 +325,25 @@
                 renderControls(n); 
             } 
         }
+
         window.deleteCategory = async function(btn) { 
             syncDOMtoData(); const catTitle = btn.closest('.category-box').querySelector('.category-title-text').innerText.trim(); 
             if(await CustomModal.confirm(`정말 [${catTitle}] 대분류를 통째로 삭제하시겠습니까?`)) { delete window.exerciseData[catTitle]; removeDeletedFromSelection(); renderControls(); renderPreview(); } 
         }
+
         window.addFolder = async function(btn, ev) { 
             if(ev) ev.stopPropagation(); syncDOMtoData(); 
             const catTitle = btn.closest('.category-box').querySelector('.category-title-text').innerText.trim(); 
             const f = await CustomModal.prompt(`[${catTitle}] 하위에 추가할 새 폴더명을 입력하세요:`); 
             if (f && !window.exerciseData[catTitle][f]) { window.exerciseData[catTitle][f] = []; renderControls(catTitle, f); } 
         }
+
         window.deleteFolder = async function(btn, ev) { 
             if(ev) ev.stopPropagation(); syncDOMtoData(); 
             const catTitle = btn.closest('.category-box').querySelector('.category-title-text').innerText.trim(); const fTitle = btn.closest('.folder-box').querySelector('.folder-title-text').innerText.trim(); 
             if(await CustomModal.confirm(`정말 [${fTitle}] 폴더와 내부 운동을 모두 삭제하시겠습니까?`)) { delete window.exerciseData[catTitle][fTitle]; removeDeletedFromSelection(); renderControls(catTitle); renderPreview(); } 
         }
+
         window.addExercise = async function(btn, ev) { 
             if(ev) ev.stopPropagation(); syncDOMtoData(); 
             const catTitle = btn.closest('.category-box').querySelector('.category-title-text').innerText.trim(); const fTitle = btn.closest('.folder-box').querySelector('.folder-title-text').innerText.trim(); 
@@ -696,7 +700,7 @@
                         ${imgs.length > 0 ? `<button class="img-edit-btn" style="background:var(--danger-red);" onclick="clearImages('${id}')">🗑️ 지우기</button>` : ''}
                         <input type="file" id="f_${id}" accept="image/*" style="display:none" onchange="uploadLocalFile(this, '${id}')">
                     </div>` : '';
-                
+
                 container.innerHTML += `
                 <div class="a4-page drop-zone-page" id="preview_${id}" ondragover="handleDragOverPage(event)" ondragleave="handleDragLeavePage(event)" ondrop="dropOnPage(event, ${idx})">
                     <div class="page-header">
@@ -781,7 +785,7 @@
         
         #main-app-container, #admin-app-container, #bottom-nav { display: none; }
         
-        /* 🌟 상단 툴바 레이아웃 (편집기 추가) 🌟 */
+        /* 🌟 서식 에디터 툴바 스타일 🌟 */
         .top-right-controls { display: none; position: fixed; top: 15px; left: 320px; right: 360px; justify-content: flex-end; gap: 10px; z-index: 1000; align-items: center; }
 
         .text-editor-toolbar { display: flex; align-items: center; background: var(--surface); border: 1px solid var(--border-soft); border-radius: 20px; padding: 0 12px; box-shadow: var(--shadow-soft); height: 38px; box-sizing: border-box; gap: 4px; }
@@ -789,9 +793,9 @@
         .text-editor-toolbar button:hover { background: #e2e8f0; color: var(--primary-medical); }
         .text-editor-toolbar .divider { width: 1px; height: 18px; background: #cbd5e1; margin: 0 5px; }
 
-        .color-palette-board { display: flex; gap: 4px; align-items: center; }
-        .color-swatch { width: 16px; height: 16px; border-radius: 50%; border: 1px solid rgba(0,0,0,0.2); cursor: pointer; transition: transform 0.1s; }
-        .color-swatch:hover { transform: scale(1.2); }
+        /* 한컴/워드 스타일 드롭다운 선택창 */
+        .editor-select { font-size: 12px; padding: 2px 4px; border: 1px solid var(--border-soft); border-radius: 4px; color: #475569; outline: none; cursor: pointer; background: transparent; }
+        .editor-select:hover { border-color: var(--primary-medical); }
 
         .top-patient-inputs { display: flex; align-items: center; background: var(--surface); border: 1px solid var(--border-soft); border-radius: 20px; padding: 5px 15px; box-shadow: var(--shadow-soft); height: 38px; box-sizing: border-box; transition: 0.2s; }
         .top-patient-inputs:focus-within { border-color: var(--primary-medical); box-shadow: 0 0 0 3px rgba(0,91,150,0.15); }
@@ -906,7 +910,6 @@
         .page-content { flex: 1; display: flex; gap: 20px; overflow: hidden; margin-bottom: 5mm;}
         
         .img-wrap { flex: 50; border: 1px solid var(--border-soft); border-radius: 12px; overflow: hidden; display: flex; align-items: center; justify-content: center; background: #fff; position: relative; outline: none; transition: 0.2s;}
-        .img-wrap:focus { border-color: var(--primary-medical); box-shadow: 0 0 0 4px rgba(0,91,150,0.1); }
         
         .vertical-img-container { display: flex; flex-direction: column; width: 100%; height: 100%; }
         .split-img-item { flex: 1; position: relative; width: 100%; height: 50%; overflow: hidden; border-bottom: 1px solid var(--border-soft); background:#fff; }
@@ -924,7 +927,6 @@
         .save-btn:hover { background: var(--save-teal); color: white; }
         
         .editable-desc { flex: 1; font-size: 12pt; line-height: 1.7; border: 1px solid var(--border-soft); padding: 15px; border-radius: 8px; overflow-y: auto; background: var(--surface); min-height: 0; transition: 0.2s; color: #334155;}
-        .editable-desc:focus { outline: none; border-color: var(--primary-medical); box-shadow: 0 0 0 3px rgba(0,91,150,0.1); }
         
         .qr-box { position: absolute; bottom: 15px; right: 15px; background: var(--surface); padding: 6px; border-radius: 10px; border: 1px solid var(--border-soft); box-shadow: var(--shadow-hover);}
         .qr-img { width: 80px; height: 80px; display: block; }
@@ -988,29 +990,26 @@
             <button onmousedown="event.preventDefault();" onclick="applyEditorFormat('italic')" title="기울임"><i>I</i></button>
             <div class="divider"></div>
             
-            <div class="color-palette-board" onmousedown="event.preventDefault();">
-                <div class="color-swatch" style="background:#333333;" onclick="applyEditorFormat('foreColor', '#333333')" title="검은색(기본)"></div>
-                <div class="color-swatch" style="background:#e63946;" onclick="applyEditorFormat('foreColor', '#e63946')" title="빨간색"></div>
-                <div class="color-swatch" style="background:#005b96;" onclick="applyEditorFormat('foreColor', '#005b96')" title="파란색"></div>
-                <div class="color-swatch" style="background:#2a9d8f;" onclick="applyEditorFormat('foreColor', '#2a9d8f')" title="초록색"></div>
-                <div class="color-swatch" style="background:#e9c46a;" onclick="applyEditorFormat('foreColor', '#e9c46a')" title="노란색"></div>
-                <div class="color-swatch" style="background:#f4a261;" onclick="applyEditorFormat('foreColor', '#f4a261')" title="주황색"></div>
-                <div class="color-swatch" style="background:#9b51e0;" onclick="applyEditorFormat('foreColor', '#9b51e0')" title="보라색"></div>
-                <div class="color-swatch" style="background:#8b5a2b;" onclick="applyEditorFormat('foreColor', '#8b5a2b')" title="갈색"></div>
-                <div class="color-swatch" style="background:#00b4d8;" onclick="applyEditorFormat('foreColor', '#00b4d8')" title="하늘색"></div>
-                <div class="color-swatch" style="background:#1d3557;" onclick="applyEditorFormat('foreColor', '#1d3557')" title="네이비색"></div>
-                <div class="color-swatch" style="background:#70e000;" onclick="applyEditorFormat('foreColor', '#70e000')" title="연두색"></div>
-                <div class="color-swatch" style="background:#6c757d;" onclick="applyEditorFormat('foreColor', '#6c757d')" title="회색"></div>
-            </div>
+            <button onmousedown="event.preventDefault();" onclick="applyEditorFormat('foreColor', '#333333')" title="검은색(기본)" style="color:#333333; font-weight:bold;">검정</button>
+            <button onmousedown="event.preventDefault();" onclick="applyEditorFormat('foreColor', '#e63946')" title="빨간색" style="color:#e63946; font-weight:bold;">빨강</button>
+            <button onmousedown="event.preventDefault();" onclick="applyEditorFormat('foreColor', '#005b96')" title="파란색" style="color:#005b96; font-weight:bold;">파랑</button>
             
             <div class="divider"></div>
             
-            <div style="display:flex; align-items:center; gap:6px; padding: 0 4px;" onmousedown="event.preventDefault();">
-                <span style="font-size:11px; color:#475569; font-weight:bold; min-width:32px; text-align:center;" id="font-size-val">12pt</span>
-                <input type="range" id="font-size-slider" min="10" max="36" step="1" value="12" style="width:65px; cursor:pointer; accent-color: var(--primary-medical);" 
-                       oninput="document.getElementById('font-size-val').innerText = this.value + 'pt';"
-                       onchange="applyEditorFormat('fontSizeCustom', this.value)">
-            </div>
+            <select class="editor-select" onmousedown="event.stopPropagation();" onchange="applyEditorFormat('fontSizeCustom', this.value); this.selectedIndex=3;" title="글자 크기">
+                <option value="9">9pt</option>
+                <option value="10">10pt</option>
+                <option value="11">11pt</option>
+                <option value="12" selected>12pt (기본)</option>
+                <option value="14">14pt</option>
+                <option value="16">16pt</option>
+                <option value="18">18pt</option>
+                <option value="20">20pt</option>
+                <option value="24">24pt</option>
+                <option value="30">30pt</option>
+                <option value="36">36pt</option>
+            </select>
+            
             <div class="divider"></div>
             <button onmousedown="event.preventDefault();" onclick="applyEditorFormat('removeFormat')" title="서식 지우기">🧹</button>
         </div>
@@ -1047,8 +1046,8 @@
             
             <input type="text" id="searchEx" class="search-box no-print" placeholder="🔍 운동 검색 (예: 스쿼트)" oninput="filterExercises()" style="margin-top:10px;">
             
-            <div id="management-controls" style="display:none; margin-bottom: 12px;">
-                <button onclick="addCategory()" style="width:100%; padding:10px; background:var(--secondary-medical); color:white; border:none; border-radius:6px; font-weight:bold; cursor:pointer;">➕ 새 관절(대분류) 추가</button>
+            <div id="management-controls" style="display:none; margin-bottom: 10px;">
+                <button onclick="addCategory()" style="width:100%; padding:10px; background:var(--secondary-medical); color:white; border:none; border-radius:6px; font-weight:bold; cursor:pointer; box-shadow:var(--shadow-soft);">➕ 새 관절(대분류) 추가</button>
             </div>
             
             <div id="controls"></div>
