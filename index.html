@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>재활 시스템 - 세로 모드 설명 공간 최적화</title>
+    <title>재활 시스템 - QR코드 위치 최적화</title>
     
     <style id="dynamic-print-style">
         @media print { @page { size: landscape; margin: 0; } }
@@ -690,6 +690,7 @@
                 let imgs = window.exerciseImages[id] || []; if (typeof imgs === 'string') imgs = [imgs];
                 let imgHtml = imgs.length === 0 ? `<div class="no-img-placeholder">Ctrl+V로 사진 추가</div>` : `<div class="vertical-img-container">${imgs.map((src, i) => `<div class="split-img-item"><img src="${src}"><div class="img-idx-badge">${i+1}</div></div>`).join('')}</div>`;
                 
+                // 🌟 QR코드가 생성되는 변수 🌟
                 const vidUrl = window.exerciseVideos[id];
                 const qrHtml = vidUrl ? `<div class="qr-box"><img src="https://api.qrserver.com/v1/create-qr-code/?size=70x70&data=${encodeURIComponent(vidUrl)}" class="qr-img"><div style="font-size:10px;text-align:center;margin-top:3px;font-weight:bold; color:var(--primary-medical);">영상</div></div>` : "";
 
@@ -701,6 +702,7 @@
                         <input type="file" id="f_${id}" accept="image/*" style="display:none" onchange="uploadLocalFile(this, '${id}')">
                     </div>` : '';
 
+                // 🌟 QR 코드를 img-wrap(사진 영역) 내부로 이동 🌟
                 container.innerHTML += `
                 <div class="a4-page drop-zone-page" id="preview_${id}" ondragover="handleDragOverPage(event)" ondragleave="handleDragLeavePage(event)" ondrop="dropOnPage(event, ${idx})">
                     <div class="page-header">
@@ -711,14 +713,17 @@
                         </div>
                     </div>
                     <div class="page-content">
-                        <div class="img-wrap" tabindex="0" onpaste="handlePaste(event, '${id}')">${imgHtml}${fileUploadHtml}</div>
+                        <div class="img-wrap" tabindex="0" onpaste="handlePaste(event, '${id}')">
+                            ${imgHtml}
+                            ${fileUploadHtml}
+                            ${qrHtml}
+                        </div>
                         <div class="exercise-details">
                             <div class="exercise-title-row">
                                 <h3>[${item.joint}] ${item.name}</h3>
                                 ${window.isAdminMode ? `<button class="no-print save-btn" onclick="saveMasterDescription('${id}', document.getElementById('desc_${id}').innerHTML)" title="원본 저장">💾 원본저장</button>` : ''}
                             </div>
                             <div contenteditable="true" id="desc_${id}" class="editable-desc">${descText}</div>
-                            ${qrHtml}
                         </div>
                     </div>
                     <div class="page-footer"><div class="page-num-indicator">${idx + 1} / ${window.selectedExercises.length}</div></div>
@@ -785,7 +790,7 @@
         
         #main-app-container, #admin-app-container, #bottom-nav { display: none; }
         
-        /* 🌟 상단 툴바 레이아웃 (에디터 통합 완료) 🌟 */
+        /* 🌟 상단 툴바 레이아웃 🌟 */
         .top-right-controls { display: none; position: fixed; top: 15px; left: 320px; right: 360px; justify-content: flex-end; gap: 10px; z-index: 1000; align-items: center; }
 
         .text-editor-toolbar { display: flex; align-items: center; background: var(--surface); border: 1px solid var(--border-soft); border-radius: 20px; padding: 0 12px; box-shadow: var(--shadow-soft); height: 38px; box-sizing: border-box; gap: 4px; }
@@ -909,6 +914,7 @@
         .page-content { flex: 1; display: flex; gap: 20px; overflow: hidden; margin-bottom: 5mm;}
         
         .img-wrap { flex: 50; border: 1px solid var(--border-soft); border-radius: 12px; overflow: hidden; display: flex; align-items: center; justify-content: center; background: #fff; position: relative; outline: none; transition: 0.2s;}
+        .img-wrap:focus { border-color: var(--primary-medical); box-shadow: 0 0 0 4px rgba(0,91,150,0.1); }
         
         .vertical-img-container { display: flex; flex-direction: column; width: 100%; height: 100%; }
         .split-img-item { flex: 1; position: relative; width: 100%; height: 50%; overflow: hidden; border-bottom: 1px solid var(--border-soft); background:#fff; }
@@ -928,8 +934,10 @@
         .editable-desc { flex: 1; font-size: 12pt; line-height: 1.7; border: 1px solid var(--border-soft); padding: 15px; border-radius: 8px; overflow-y: auto; background: var(--surface); min-height: 0; transition: 0.2s; color: #334155;}
         .editable-desc:focus { outline: none; border-color: var(--primary-medical); box-shadow: 0 0 0 3px rgba(0,91,150,0.1); }
         
-        .qr-box { position: absolute; bottom: 15px; right: 15px; background: var(--surface); padding: 6px; border-radius: 10px; border: 1px solid var(--border-soft); box-shadow: var(--shadow-hover);}
+        /* 🌟 QR 코드 위치: 이미지 박스 우측 하단으로 이동 🌟 */
+        .qr-box { position: absolute; bottom: 15px; right: 15px; background: var(--surface); padding: 6px; border-radius: 10px; border: 1px solid var(--border-soft); box-shadow: var(--shadow-hover); z-index: 10;}
         .qr-img { width: 80px; height: 80px; display: block; }
+        
         .page-footer { margin-top: auto; border-top: 1px solid var(--border-soft); padding-top: 10px; display: flex; justify-content: flex-end; align-items: center; pointer-events: none;}
         .page-num-indicator { font-size: 11pt; color: #94a3b8; font-weight: bold; }
         
@@ -938,7 +946,6 @@
         
         .landscape-mode .a4-page { width: 297mm; height: 210mm; }
         
-        /* 🌟 세로 모드 최적화 (사진 높이 45% 줄임 / 글씨 공간 55% 확보) 🌟 */
         .portrait-mode .a4-page { width: 210mm; height: 297mm; }
         .portrait-mode .page-content { flex-direction: column; gap: 15px; }
         .portrait-mode .img-wrap { height: 45%; width: 100%; flex: none; } 
