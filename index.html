@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>재활 시스템 - 워드급 서식 에디터 픽스</title>
+    <title>재활 시스템 - 세로 모드 설명 공간 최적화</title>
     
     <style id="dynamic-print-style">
         @media print { @page { size: landscape; margin: 0; } }
@@ -785,7 +785,7 @@
         
         #main-app-container, #admin-app-container, #bottom-nav { display: none; }
         
-        /* 🌟 서식 에디터 툴바 스타일 🌟 */
+        /* 🌟 상단 툴바 레이아웃 (에디터 통합 완료) 🌟 */
         .top-right-controls { display: none; position: fixed; top: 15px; left: 320px; right: 360px; justify-content: flex-end; gap: 10px; z-index: 1000; align-items: center; }
 
         .text-editor-toolbar { display: flex; align-items: center; background: var(--surface); border: 1px solid var(--border-soft); border-radius: 20px; padding: 0 12px; box-shadow: var(--shadow-soft); height: 38px; box-sizing: border-box; gap: 4px; }
@@ -793,8 +793,7 @@
         .text-editor-toolbar button:hover { background: #e2e8f0; color: var(--primary-medical); }
         .text-editor-toolbar .divider { width: 1px; height: 18px; background: #cbd5e1; margin: 0 5px; }
 
-        /* 한컴/워드 스타일 드롭다운 선택창 */
-        .editor-select { font-size: 12px; padding: 2px 4px; border: 1px solid var(--border-soft); border-radius: 4px; color: #475569; outline: none; cursor: pointer; background: transparent; }
+        .editor-select { font-size: 12px; padding: 2px 4px; border: 1px solid var(--border-soft); border-radius: 4px; color: #475569; outline: none; cursor: pointer; background: transparent; font-weight:bold; }
         .editor-select:hover { border-color: var(--primary-medical); }
 
         .top-patient-inputs { display: flex; align-items: center; background: var(--surface); border: 1px solid var(--border-soft); border-radius: 20px; padding: 5px 15px; box-shadow: var(--shadow-soft); height: 38px; box-sizing: border-box; transition: 0.2s; }
@@ -927,6 +926,7 @@
         .save-btn:hover { background: var(--save-teal); color: white; }
         
         .editable-desc { flex: 1; font-size: 12pt; line-height: 1.7; border: 1px solid var(--border-soft); padding: 15px; border-radius: 8px; overflow-y: auto; background: var(--surface); min-height: 0; transition: 0.2s; color: #334155;}
+        .editable-desc:focus { outline: none; border-color: var(--primary-medical); box-shadow: 0 0 0 3px rgba(0,91,150,0.1); }
         
         .qr-box { position: absolute; bottom: 15px; right: 15px; background: var(--surface); padding: 6px; border-radius: 10px; border: 1px solid var(--border-soft); box-shadow: var(--shadow-hover);}
         .qr-img { width: 80px; height: 80px; display: block; }
@@ -937,10 +937,12 @@
         .img-edit-btn:hover { background: rgba(15,23,42,0.9); transform: scale(1.05); }
         
         .landscape-mode .a4-page { width: 297mm; height: 210mm; }
+        
+        /* 🌟 세로 모드 최적화 (사진 높이 45% 줄임 / 글씨 공간 55% 확보) 🌟 */
         .portrait-mode .a4-page { width: 210mm; height: 297mm; }
         .portrait-mode .page-content { flex-direction: column; gap: 15px; }
-        .portrait-mode .img-wrap { height: 60%; width: 100%; flex: none; } 
-        .portrait-mode .exercise-details { height: 40%; width: 100%; flex: none; display: flex; flex-direction: column; } 
+        .portrait-mode .img-wrap { height: 45%; width: 100%; flex: none; } 
+        .portrait-mode .exercise-details { height: 55%; width: 100%; flex: none; display: flex; flex-direction: column; } 
         .portrait-mode .editable-desc { font-size: 13pt; min-height: 0; } 
 
         @media print {
