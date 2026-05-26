@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>재활 시스템 - QR코드 위치 최적화</title>
+    <title>재활 시스템 - 하이브리드 이미지 최적화</title>
     
     <style id="dynamic-print-style">
         @media print { @page { size: landscape; margin: 0; } }
@@ -151,11 +151,7 @@
                 if (descSnap.exists()) window.exerciseDescriptions = descSnap.data();
                 
                 const imgSnap = await getDoc(doc(db, "settings", "exerciseImages"));
-                if (imgSnap.exists()) {
-                    let loadedImgs = imgSnap.data();
-                    for (let k in loadedImgs) { if (typeof loadedImgs[k] === 'string') { loadedImgs[k] = [loadedImgs[k]]; } }
-                    window.exerciseImages = loadedImgs;
-                }
+                if (imgSnap.exists()) { window.exerciseImages = imgSnap.data(); }
 
                 const vidSnap = await getDoc(doc(db, "settings", "exerciseVideos"));
                 if (vidSnap.exists()) window.exerciseVideos = vidSnap.data();
@@ -414,29 +410,38 @@
 
         window.setVideoLink = async function(id) { const currentUrl = window.exerciseVideos[id] || ""; const url = await CustomModal.prompt("유튜브(영상) 주소:", currentUrl); if (url !== null) { try { await setDoc(doc(db, "settings", "exerciseVideos"), { [id]: url }, { merge: true }); window.exerciseVideos[id] = url; renderPreview(); } catch(e) { await CustomModal.alert("저장 실패!"); } } };
 
-        window.processAndSaveImage = function(file, id) {
-            const reader = new FileReader(); reader.readAsDataURL(file);
-            reader.onload = function(event) {
-                const img = new Image(); img.src = event.target.result;
-                img.onload = async function() {
-                    const canvas = document.createElement('canvas'); let w = img.width, h = img.height; const MAX = 1000; 
-                    if (w > h) { if (w > MAX) { h *= MAX / w; w = MAX; } } else { if (h > MAX) { w *= MAX / h; h = MAX; } }
-                    canvas.width = w; canvas.height = h; canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-                    const base64 = canvas.toDataURL('image/jpeg', 0.85); 
-                    let imgs = window.exerciseImages[id] || []; if (typeof imgs === 'string') imgs = [imgs]; imgs.push(base64);
-                    try { 
-                        await setDoc(doc(db, "settings", "exerciseImages"), { [id]: imgs }, { merge: true }); 
-                        window.exerciseImages[id] = imgs; 
-                        renderPreview(); 
-                    } catch (e) { 
-                        await CustomModal.alert("⚠️ 저장 실패! 데이터베이스 용량을 초과했습니다. 사진 화질이나 갯수를 줄여주세요."); 
-                    }
-                }
-            };
-        }
+        // 🌟 하이브리드 이미지 저장 로직 (URL 전용 방식) 🌟
+        window.setImageUrl = async function(id) {
+            let currentUrl = "";
+            let savedData = window.exerciseImages[id];
+            if (Array.isArray(savedData)) { currentUrl = savedData[0] || ""; } 
+            else if (typeof savedData === 'string') { currentUrl = savedData; }
 
-        window.clearImages = async function(id) { if (await CustomModal.confirm("현재 운동의 사진을 모두 삭제하시겠습니까?")) { await setDoc(doc(db, "settings", "exerciseImages"), { [id]: [] }, { merge: true }); window.exerciseImages[id] = []; renderPreview(); } }
-        window.handlePaste = function(e, id) { if(!window.isAdminMode) return; const items = (e.clipboardData || e.originalEvent.clipboardData).items; for (let i in items) { if (items[i].kind === 'file' && items[i].type.startsWith('image/')) { processAndSaveImage(items[i].getAsFile(), id); break; } } }
+            const url = await CustomModal.prompt("외부 이미지 주소(URL)를 입력하세요:\n(비워두면 C:\\rehab_images\\ 폴더의 로컬 사진을 찾습니다.)", currentUrl);
+            
+            if (url !== null) {
+                try {
+                    await setDoc(doc(db, "settings", "exerciseImages"), { [id]: url }, { merge: true });
+                    window.exerciseImages[id] = url;
+                    renderPreview();
+                } catch(e) {
+                    await CustomModal.alert("저장 실패! 관리자에게 문의하세요.");
+                }
+            }
+        };
+
+        window.clearImages = async function(id) { 
+            if (await CustomModal.confirm("등록된 외부 이미지 링크를 삭제하시겠습니까?\n(로컬 C드라이브 사진은 삭제되지 않습니다.)")) { 
+                await setDoc(doc(db, "settings", "exerciseImages"), { [id]: "" }, { merge: true }); 
+                window.exerciseImages[id] = ""; 
+                renderPreview(); 
+            } 
+        };
+
+        window.handlePaste = async function(e, id) { 
+            if(!window.isAdminMode) return; 
+            await CustomModal.alert("⚠️ 브라우저 보안 정책상 붙여넣기로 직접 업로드할 수 없습니다.<br><br>대신 C:\\rehab_images\\ 경로에 파일을 직접 저장하시거나 [🔗 외부 URL] 기능을 이용해주세요.");
+        };
 
         window.deletePatientRoutine = async function(key) {
             if (await CustomModal.confirm("이 환자의 해당 방문 기록을 완전히 삭제하시겠습니까?")) {
@@ -687,22 +692,42 @@
             window.selectedExercises.forEach((item, idx) => {
                 const id = item.id; 
                 const descText = item.customDesc || window.exerciseDescriptions[id] || "방법을 입력하세요.";
-                let imgs = window.exerciseImages[id] || []; if (typeof imgs === 'string') imgs = [imgs];
-                let imgHtml = imgs.length === 0 ? `<div class="no-img-placeholder">Ctrl+V로 사진 추가</div>` : `<div class="vertical-img-container">${imgs.map((src, i) => `<div class="split-img-item"><img src="${src}"><div class="img-idx-badge">${i+1}</div></div>`).join('')}</div>`;
                 
-                // 🌟 QR코드가 생성되는 변수 🌟
+                // 🌟 이미지 하이브리드 판별 로직 🌟
+                let savedData = window.exerciseImages[id];
+                let savedUrl = "";
+                if (Array.isArray(savedData)) { savedUrl = savedData[0] || ""; } 
+                else if (typeof savedData === 'string') { savedUrl = savedData; }
+                
+                let imgHtml = "";
+                if (savedUrl && (savedUrl.startsWith('http') || savedUrl.startsWith('data:'))) {
+                    imgHtml = `<div class="vertical-img-container">
+                                <div class="split-img-item"><img src="${savedUrl}"></div>
+                               </div>`;
+                } else {
+                    // C드라이브에서 기본 사진을 찾고, 없으면 안내문구 노출
+                    imgHtml = `<div class="vertical-img-container">
+                                <div class="split-img-item" style="position:relative;">
+                                    <img src="file:///C:/rehab_images/${id}_1.jpg" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                                    <div class="no-img-placeholder" style="display:none; flex-direction:column; justify-content:center; align-items:center; height:100%; font-size:13px; color:#94a3b8; text-align:center; padding:20px; background:#f1f5f9; box-sizing:border-box;">
+                                        <span style="font-size:24px; margin-bottom:10px;">📸</span>
+                                        <b style="color:var(--primary-medical); margin-bottom:5px;">C:\\rehab_images\\${id}_1.jpg</b>
+                                        <span>경로에 사진을 저장하시거나,<br>아래 [🔗 외부 URL] 버튼을 눌러 등록하세요.</span>
+                                    </div>
+                                </div>
+                               </div>`;
+                }
+                
                 const vidUrl = window.exerciseVideos[id];
                 const qrHtml = vidUrl ? `<div class="qr-box"><img src="https://api.qrserver.com/v1/create-qr-code/?size=70x70&data=${encodeURIComponent(vidUrl)}" class="qr-img"><div style="font-size:10px;text-align:center;margin-top:3px;font-weight:bold; color:var(--primary-medical);">영상</div></div>` : "";
 
                 const fileUploadHtml = window.isAdminMode ? `
-                    <div class="no-print" style="position: absolute; bottom: 10px; left: 10px; display:flex; gap:8px;">
-                        <button class="img-edit-btn" onclick="document.getElementById('f_${id}').click()">📁 사진추가</button>
-                        <button class="img-edit-btn" style="background:var(--secondary-medical);" onclick="setVideoLink('${id}')">🔗 QR 링크</button>
-                        ${imgs.length > 0 ? `<button class="img-edit-btn" style="background:var(--danger-red);" onclick="clearImages('${id}')">🗑️ 지우기</button>` : ''}
-                        <input type="file" id="f_${id}" accept="image/*" style="display:none" onchange="uploadLocalFile(this, '${id}')">
+                    <div class="no-print" style="position: absolute; bottom: 10px; left: 10px; display:flex; gap:8px; z-index:20;">
+                        <button class="img-edit-btn" style="background:var(--primary-medical);" onclick="setImageUrl('${id}')">🔗 외부 URL</button>
+                        <button class="img-edit-btn" style="background:var(--secondary-medical);" onclick="setVideoLink('${id}')">🎥 QR 영상</button>
+                        ${savedUrl ? `<button class="img-edit-btn" style="background:var(--danger-red);" onclick="clearImages('${id}')">🗑️ 사진 지우기</button>` : ''}
                     </div>` : '';
 
-                // 🌟 QR 코드를 img-wrap(사진 영역) 내부로 이동 🌟
                 container.innerHTML += `
                 <div class="a4-page drop-zone-page" id="preview_${id}" ondragover="handleDragOverPage(event)" ondragleave="handleDragLeavePage(event)" ondrop="dropOnPage(event, ${idx})">
                     <div class="page-header">
@@ -917,7 +942,7 @@
         .img-wrap:focus { border-color: var(--primary-medical); box-shadow: 0 0 0 4px rgba(0,91,150,0.1); }
         
         .vertical-img-container { display: flex; flex-direction: column; width: 100%; height: 100%; }
-        .split-img-item { flex: 1; position: relative; width: 100%; height: 50%; overflow: hidden; border-bottom: 1px solid var(--border-soft); background:#fff; }
+        .split-img-item { flex: 1; position: relative; width: 100%; height: 50%; overflow: hidden; border-bottom: 1px solid var(--border-soft); background:#fff; display:flex; justify-content:center; align-items:center; }
         .split-img-item:last-child { border-bottom: none; }
         .split-img-item img { width: 100%; height: 100%; object-fit: fill; } 
         
