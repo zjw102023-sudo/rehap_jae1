@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>재활 시스템 - 하이브리드 이미지 최적화</title>
+    <title>재활 시스템 - Firestore 압축 최적화 완전판</title>
     
     <style id="dynamic-print-style">
         @media print { @page { size: landscape; margin: 0; } }
@@ -10,7 +10,7 @@
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-        import { getFirestore, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+        import { getFirestore, doc, getDoc, setDoc, collection, getDocs, deleteDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyCT5WAkV3v5OSRxC34aVDeyfeDCQWCWHTE",
@@ -36,7 +36,7 @@
         window.currentTab = 'prescription';
         window.lastActiveRange = null; 
 
-        // 🌟 에디터 서식 적용 및 포커스 유지 로직 🌟
+        // 🌟 에디터 서식 적용 및 포커스 유지 🌟
         document.addEventListener('selectionchange', () => {
             const sel = window.getSelection();
             if (sel.rangeCount > 0) {
@@ -150,13 +150,19 @@
                 const descSnap = await getDoc(doc(db, "settings", "exerciseDescriptions"));
                 if (descSnap.exists()) window.exerciseDescriptions = descSnap.data();
                 
-                const imgSnap = await getDoc(doc(db, "settings", "exerciseImages"));
-                if (imgSnap.exists()) { window.exerciseImages = imgSnap.data(); }
+                // 🌟 [핵심 변경] 용량 문제 해결을 위해 컬렉션 전체를 불러오는 방식으로 변경 🌟
+                const imgCol = await getDocs(collection(db, "exerciseImages"));
+                let loadedImgs = {};
+                imgCol.forEach(docSnap => {
+                    const data = docSnap.data();
+                    if(data.imgs) loadedImgs[docSnap.id] = data.imgs;
+                });
+                window.exerciseImages = loadedImgs;
 
                 const vidSnap = await getDoc(doc(db, "settings", "exerciseVideos"));
                 if (vidSnap.exists()) window.exerciseVideos = vidSnap.data();
 
-            } catch (e) { console.error(e); }
+            } catch (e) { console.error("데이터 로드 중 에러:", e); }
             renderControls(); renderPatientList(); renderPreview(); 
         }
 
@@ -207,8 +213,16 @@
             for (let oldKey in window.keyMigrations) {
                 let newKey = window.keyMigrations[oldKey];
                 if (window.exerciseDescriptions[oldKey] !== undefined) { window.exerciseDescriptions[newKey] = window.exerciseDescriptions[oldKey]; delete window.exerciseDescriptions[oldKey]; metaChanged = true; }
-                if (window.exerciseImages[oldKey] !== undefined) { window.exerciseImages[newKey] = window.exerciseImages[oldKey]; delete window.exerciseImages[oldKey]; metaChanged = true; }
                 if (window.exerciseVideos[oldKey] !== undefined) { window.exerciseVideos[newKey] = window.exerciseVideos[oldKey]; delete window.exerciseVideos[oldKey]; metaChanged = true; }
+                
+                // 사진 파일 이름 변경 처리 (독립 문서 방식 반영)
+                if (window.exerciseImages[oldKey] !== undefined) { 
+                    window.exerciseImages[newKey] = window.exerciseImages[oldKey]; 
+                    delete window.exerciseImages[oldKey]; 
+                    await setDoc(doc(db, "exerciseImages", newKey), { imgs: window.exerciseImages[newKey] });
+                    await deleteDoc(doc(db, "exerciseImages", oldKey));
+                }
+
                 window.selectedExercises = window.selectedExercises.map(ex => {
                     if (ex.id === oldKey) { const parts = newKey.split('_'); return { joint: parts[0], name: parts[1], id: newKey, customDesc: ex.customDesc }; } return ex;
                 });
@@ -223,7 +237,7 @@
                 });
                 if (pExChanged) patientChanged = true;
             }
-            if(metaChanged) { await setDoc(doc(db, "settings", "exerciseDescriptions"), window.exerciseDescriptions); await setDoc(doc(db, "settings", "exerciseImages"), window.exerciseImages); await setDoc(doc(db, "settings", "exerciseVideos"), window.exerciseVideos); }
+            if(metaChanged) { await setDoc(doc(db, "settings", "exerciseDescriptions"), window.exerciseDescriptions); await setDoc(doc(db, "settings", "exerciseVideos"), window.exerciseVideos); }
             if (patientChanged) { await setDoc(doc(db, "settings", "patients"), window.patientDB); }
             window.keyMigrations = {};
         }
@@ -410,38 +424,79 @@
 
         window.setVideoLink = async function(id) { const currentUrl = window.exerciseVideos[id] || ""; const url = await CustomModal.prompt("유튜브(영상) 주소:", currentUrl); if (url !== null) { try { await setDoc(doc(db, "settings", "exerciseVideos"), { [id]: url }, { merge: true }); window.exerciseVideos[id] = url; renderPreview(); } catch(e) { await CustomModal.alert("저장 실패!"); } } };
 
-        // 🌟 하이브리드 이미지 저장 로직 (URL 전용 방식) 🌟
-        window.setImageUrl = async function(id) {
-            let currentUrl = "";
-            let savedData = window.exerciseImages[id];
-            if (Array.isArray(savedData)) { currentUrl = savedData[0] || ""; } 
-            else if (typeof savedData === 'string') { currentUrl = savedData; }
+        // 🌟 [핵심 기능] 자동 압축 및 독립 문서 저장 로직 🌟
+        window.processAndSaveImage = function(file, id) {
+            document.getElementById('global-loader').style.display = 'flex'; // 로딩 표시
+            const reader = new FileReader(); 
+            reader.readAsDataURL(file);
+            reader.onload = function(event) {
+                const img = new Image(); 
+                img.src = event.target.result;
+                img.onload = async function() {
+                    const canvas = document.createElement('canvas'); 
+                    let w = img.width, h = img.height; 
+                    // 압축 설정: 가로/세로 최대 600px로 축소 (화질은 유지하되 픽셀 크기 최소화)
+                    const MAX = 600; 
+                    if (w > h) { if (w > MAX) { h *= MAX / w; w = MAX; } } 
+                    else { if (h > MAX) { w *= MAX / h; h = MAX; } }
+                    canvas.width = w; canvas.height = h; 
+                    canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+                    
+                    // 화질 0.6으로 설정하여 Base64 크기를 30~50KB 수준으로 극강 압축
+                    const base64 = canvas.toDataURL('image/jpeg', 0.6); 
+                    
+                    let imgs = window.exerciseImages[id] || []; 
+                    if (typeof imgs === 'string') imgs = [imgs]; 
 
-            const url = await CustomModal.prompt("외부 이미지 주소(URL)를 입력하세요:\n(비워두면 C:\\rehab_images\\ 폴더의 로컬 사진을 찾습니다.)", currentUrl);
-            
-            if (url !== null) {
-                try {
-                    await setDoc(doc(db, "settings", "exerciseImages"), { [id]: url }, { merge: true });
-                    window.exerciseImages[id] = url;
-                    renderPreview();
-                } catch(e) {
-                    await CustomModal.alert("저장 실패! 관리자에게 문의하세요.");
+                    // 방어 로직: 한 운동당 사진 최대 3장 제한
+                    if (imgs.length >= 3) {
+                        document.getElementById('global-loader').style.display = 'none';
+                        return await CustomModal.alert("⚠️ Firestore 1MB 제한 방어를 위해 한 운동당 사진은 최대 3장까지만 등록 가능합니다.");
+                    }
+
+                    imgs.push(base64);
+                    
+                    try { 
+                        // 🔥 1MB 통 문서 병목 해결! 각각의 운동 ID를 문서 이름으로 하는 '개별 서류철'에 저장
+                        await setDoc(doc(db, "exerciseImages", id), { imgs: imgs }); 
+                        window.exerciseImages[id] = imgs; 
+                        renderPreview(); 
+                    } catch (e) { 
+                        await CustomModal.alert("⚠️ 저장 실패! 관리자에게 문의하세요."); 
+                    } finally {
+                        document.getElementById('global-loader').style.display = 'none';
+                    }
                 }
+            };
+        }
+
+        // 파일 첨부(버튼) 연결 함수
+        window.uploadLocalFile = function(input, id) {
+            if (input.files && input.files[0]) {
+                processAndSaveImage(input.files[0], id);
+                input.value = ""; // 동일 파일 연속 업로드 방지 초기화
             }
         };
 
         window.clearImages = async function(id) { 
-            if (await CustomModal.confirm("등록된 외부 이미지 링크를 삭제하시겠습니까?\n(로컬 C드라이브 사진은 삭제되지 않습니다.)")) { 
-                await setDoc(doc(db, "settings", "exerciseImages"), { [id]: "" }, { merge: true }); 
-                window.exerciseImages[id] = ""; 
+            if (await CustomModal.confirm("현재 운동의 사진을 모두 삭제하시겠습니까?")) { 
+                await setDoc(doc(db, "exerciseImages", id), { imgs: [] }); // 개별 문서 초기화
+                window.exerciseImages[id] = []; 
                 renderPreview(); 
             } 
-        };
+        }
 
-        window.handlePaste = async function(e, id) { 
+        // 복붙(Ctrl+V) 연결 함수
+        window.handlePaste = function(e, id) { 
             if(!window.isAdminMode) return; 
-            await CustomModal.alert("⚠️ 브라우저 보안 정책상 붙여넣기로 직접 업로드할 수 없습니다.<br><br>대신 C:\\rehab_images\\ 경로에 파일을 직접 저장하시거나 [🔗 외부 URL] 기능을 이용해주세요.");
-        };
+            const items = (e.clipboardData || e.originalEvent.clipboardData).items; 
+            for (let i in items) { 
+                if (items[i].kind === 'file' && items[i].type.startsWith('image/')) { 
+                    processAndSaveImage(items[i].getAsFile(), id); 
+                    break; 
+                } 
+            } 
+        }
 
         window.deletePatientRoutine = async function(key) {
             if (await CustomModal.confirm("이 환자의 해당 방문 기록을 완전히 삭제하시겠습니까?")) {
@@ -673,7 +728,6 @@
             if(window.renderSelectedChips) window.renderSelectedChips();
 
             const container = document.getElementById('page-container');
-            
             const pName = document.getElementById('pIn')?.value || "________"; 
             const tName = sessionStorage.getItem('loggedInName') || "________";
             
@@ -693,39 +747,20 @@
                 const id = item.id; 
                 const descText = item.customDesc || window.exerciseDescriptions[id] || "방법을 입력하세요.";
                 
-                // 🌟 이미지 하이브리드 판별 로직 🌟
-                let savedData = window.exerciseImages[id];
-                let savedUrl = "";
-                if (Array.isArray(savedData)) { savedUrl = savedData[0] || ""; } 
-                else if (typeof savedData === 'string') { savedUrl = savedData; }
+                let imgs = window.exerciseImages[id] || []; 
+                if (typeof imgs === 'string') imgs = [imgs];
                 
-                let imgHtml = "";
-                if (savedUrl && (savedUrl.startsWith('http') || savedUrl.startsWith('data:'))) {
-                    imgHtml = `<div class="vertical-img-container">
-                                <div class="split-img-item"><img src="${savedUrl}"></div>
-                               </div>`;
-                } else {
-                    // C드라이브에서 기본 사진을 찾고, 없으면 안내문구 노출
-                    imgHtml = `<div class="vertical-img-container">
-                                <div class="split-img-item" style="position:relative;">
-                                    <img src="file:///C:/rehab_images/${id}_1.jpg" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
-                                    <div class="no-img-placeholder" style="display:none; flex-direction:column; justify-content:center; align-items:center; height:100%; font-size:13px; color:#94a3b8; text-align:center; padding:20px; background:#f1f5f9; box-sizing:border-box;">
-                                        <span style="font-size:24px; margin-bottom:10px;">📸</span>
-                                        <b style="color:var(--primary-medical); margin-bottom:5px;">C:\\rehab_images\\${id}_1.jpg</b>
-                                        <span>경로에 사진을 저장하시거나,<br>아래 [🔗 외부 URL] 버튼을 눌러 등록하세요.</span>
-                                    </div>
-                                </div>
-                               </div>`;
-                }
+                let imgHtml = imgs.length === 0 ? `<div class="no-img-placeholder">Ctrl+V로 사진 추가 (최대 3장)</div>` : `<div class="vertical-img-container">${imgs.map((src, i) => `<div class="split-img-item"><img src="${src}"><div class="img-idx-badge">${i+1}</div></div>`).join('')}</div>`;
                 
                 const vidUrl = window.exerciseVideos[id];
                 const qrHtml = vidUrl ? `<div class="qr-box"><img src="https://api.qrserver.com/v1/create-qr-code/?size=70x70&data=${encodeURIComponent(vidUrl)}" class="qr-img"><div style="font-size:10px;text-align:center;margin-top:3px;font-weight:bold; color:var(--primary-medical);">영상</div></div>` : "";
 
                 const fileUploadHtml = window.isAdminMode ? `
-                    <div class="no-print" style="position: absolute; bottom: 10px; left: 10px; display:flex; gap:8px; z-index:20;">
-                        <button class="img-edit-btn" style="background:var(--primary-medical);" onclick="setImageUrl('${id}')">🔗 외부 URL</button>
-                        <button class="img-edit-btn" style="background:var(--secondary-medical);" onclick="setVideoLink('${id}')">🎥 QR 영상</button>
-                        ${savedUrl ? `<button class="img-edit-btn" style="background:var(--danger-red);" onclick="clearImages('${id}')">🗑️ 사진 지우기</button>` : ''}
+                    <div class="no-print" style="position: absolute; bottom: 10px; left: 10px; display:flex; gap:8px;">
+                        <button class="img-edit-btn" onclick="document.getElementById('f_${id}').click()">📁 사진추가</button>
+                        <button class="img-edit-btn" style="background:var(--secondary-medical);" onclick="setVideoLink('${id}')">🔗 QR 링크</button>
+                        ${imgs.length > 0 ? `<button class="img-edit-btn" style="background:var(--danger-red);" onclick="clearImages('${id}')">🗑️ 지우기</button>` : ''}
+                        <input type="file" id="f_${id}" accept="image/*" style="display:none" onchange="uploadLocalFile(this, '${id}')">
                     </div>` : '';
 
                 container.innerHTML += `
@@ -758,35 +793,16 @@
     </script>
     <style>
         :root {
-            --primary-medical: #005b96; 
-            --secondary-medical: #00b4d8; 
-            --save-teal: #009688; 
-            --danger-red: #e63946; 
-            --bg-color: #f4f7f9; 
-            --surface: #ffffff;
-            --border-soft: #e0e6ed;
-            --shadow-soft: 0 4px 12px rgba(0,0,0,0.06);
-            --shadow-hover: 0 6px 16px rgba(0,0,0,0.1);
+            --primary-medical: #005b96; --secondary-medical: #00b4d8; --save-teal: #009688; 
+            --danger-red: #e63946; --bg-color: #f4f7f9; --surface: #ffffff;
+            --border-soft: #e0e6ed; --shadow-soft: 0 4px 12px rgba(0,0,0,0.06); --shadow-hover: 0 6px 16px rgba(0,0,0,0.1);
         }
-
-        [contenteditable="true"] {
-            user-select: text !important;
-            -webkit-user-select: text !important;
-            cursor: text !important;
-            outline: none;
-        }
-        [contenteditable="true"]:focus {
-            background: #fff !important;
-            border: 1px dashed var(--primary-medical) !important;
-            box-shadow: 0 0 0 2px rgba(0,91,150,0.1);
-        }
-
+        [contenteditable="true"] { user-select: text !important; -webkit-user-select: text !important; cursor: text !important; outline: none; }
+        [contenteditable="true"]:focus { background: #fff !important; border: 1px dashed var(--primary-medical) !important; box-shadow: 0 0 0 2px rgba(0,91,150,0.1); }
         body { font-family: 'Pretendard', sans-serif; margin: 0; display: flex; background: var(--bg-color); overflow: hidden; color: #333; }
-        
         ::-webkit-scrollbar { width: 6px; }
         ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
         ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
-
         #custom-modal-overlay { position: fixed; inset: 0; background: rgba(0,20,40,0.6); z-index: 999999; display: none; justify-content: center; align-items: center; opacity: 0; transition: opacity 0.2s ease; backdrop-filter: blur(2px); }
         .custom-modal { background: var(--surface); padding: 25px 30px; border-radius: 12px; width: 320px; box-shadow: 0 15px 35px rgba(0,0,0,0.2); transform: translateY(-10px); animation: modalPop 0.3s forwards; }
         @keyframes modalPop { to { transform: translateY(0); } }
@@ -796,15 +812,11 @@
         .custom-modal input:focus { outline: none; border-color: var(--primary-medical); box-shadow: 0 0 0 3px rgba(0,91,150,0.15); }
         .modal-btns { display: flex; justify-content: flex-end; gap: 10px; }
         .modal-btns button { padding: 8px 16px; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; transition: 0.2s; font-size: 13px; }
-        #modal-btn-cancel { background: #f1f5f9; color: #64748b; }
-        #modal-btn-cancel:hover { background: #e2e8f0; }
-        #modal-btn-ok { background: var(--primary-medical); color: white; }
-        #modal-btn-ok:hover { background: #004c80; }
-
+        #modal-btn-cancel { background: #f1f5f9; color: #64748b; } #modal-btn-cancel:hover { background: #e2e8f0; }
+        #modal-btn-ok { background: var(--primary-medical); color: white; } #modal-btn-ok:hover { background: #004c80; }
         #global-loader { position: fixed; inset: 0; background: rgba(255,255,255,0.9); z-index: 100000; display: flex; flex-direction: column; justify-content: center; align-items: center; transition: opacity 0.3s; }
         .spinner { width: 40px; height: 40px; border: 4px solid #e2e8f0; border-top-color: var(--primary-medical); border-radius: 50%; animation: spin 1s linear infinite; }
         @keyframes spin { 100% { transform: rotate(360deg); } }
-
         #login-overlay { position: fixed; inset: 0; background: var(--primary-medical); display: flex; justify-content: center; align-items: center; z-index: 9999; }
         .login-box { background: white; padding: 40px; border-radius: 16px; text-align: center; width: 320px; box-shadow: 0 20px 40px rgba(0,0,0,0.2); }
         .login-box h2 { color: var(--primary-medical); margin-bottom: 25px; }
@@ -812,58 +824,42 @@
         .login-box input:focus { outline: none; border-color: var(--primary-medical); box-shadow: 0 0 0 3px rgba(0,91,150,0.15); }
         .login-box button { width: 100%; padding: 12px; background: var(--primary-medical); color: white; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; margin-top:10px; box-sizing: border-box; transition: 0.2s; font-size: 15px;}
         .login-box button:hover { background: #004c80; transform: translateY(-2px); box-shadow: 0 4px 10px rgba(0,91,150,0.3); }
-        
         #main-app-container, #admin-app-container, #bottom-nav { display: none; }
-        
-        /* 🌟 상단 툴바 레이아웃 🌟 */
         .top-right-controls { display: none; position: fixed; top: 15px; left: 320px; right: 360px; justify-content: flex-end; gap: 10px; z-index: 1000; align-items: center; }
-
         .text-editor-toolbar { display: flex; align-items: center; background: var(--surface); border: 1px solid var(--border-soft); border-radius: 20px; padding: 0 12px; box-shadow: var(--shadow-soft); height: 38px; box-sizing: border-box; gap: 4px; }
         .text-editor-toolbar button { background: transparent; border: none; cursor: pointer; font-size: 14px; padding: 4px 6px; border-radius: 4px; color: #475569; transition: 0.2s; font-weight: bold; display:flex; align-items:center; justify-content:center;}
         .text-editor-toolbar button:hover { background: #e2e8f0; color: var(--primary-medical); }
         .text-editor-toolbar .divider { width: 1px; height: 18px; background: #cbd5e1; margin: 0 5px; }
-
         .editor-select { font-size: 12px; padding: 2px 4px; border: 1px solid var(--border-soft); border-radius: 4px; color: #475569; outline: none; cursor: pointer; background: transparent; font-weight:bold; }
         .editor-select:hover { border-color: var(--primary-medical); }
-
         .top-patient-inputs { display: flex; align-items: center; background: var(--surface); border: 1px solid var(--border-soft); border-radius: 20px; padding: 5px 15px; box-shadow: var(--shadow-soft); height: 38px; box-sizing: border-box; transition: 0.2s; }
         .top-patient-inputs:focus-within { border-color: var(--primary-medical); box-shadow: 0 0 0 3px rgba(0,91,150,0.15); }
         .top-patient-inputs input { border: none; outline: none; background: transparent; font-size: 13px; font-weight: bold; color: #334155; }
-        .top-patient-inputs #pIn { width: 110px; }
-        .top-patient-inputs #chartIn { width: 90px; }
+        .top-patient-inputs #pIn { width: 110px; } .top-patient-inputs #chartIn { width: 90px; }
         .top-patient-inputs .divider { width: 1px; height: 16px; background: #cbd5e1; margin: 0 10px; }
-
         #main-app-container { width: 100%; height: 100vh; }
         #sidebar { width: 300px; height: 100vh; background: var(--surface); padding: 20px; overflow-y: auto; border-right: 1px solid var(--border-soft); box-sizing: border-box; z-index: 10; padding-bottom: 80px; box-shadow: 2px 0 10px rgba(0,0,0,0.02); }
         #patient-panel { width: 340px; height: 100vh; background: #f8fafc; padding: 20px; position: fixed; right: 0; top: 0; border-left: 1px solid var(--border-soft); box-sizing: border-box; overflow-y: auto; z-index: 10; padding-bottom: 80px; box-shadow: -2px 0 10px rgba(0,0,0,0.02); }
-        
         #preview-area { position: fixed; left: 300px; right: 340px; top: 0; bottom: 0; overflow: auto; padding-top: 75px; padding-bottom: 80px; box-sizing: border-box; transition: right 0.3s; background: var(--bg-color); }
         #page-container { display: flex; flex-direction: column; align-items: center; transform: scale(0.8); transform-origin: top center; margin-bottom: -15%; min-height: 100%; width: 100%;}
-        
         #admin-app-container { width: 100%; height: 100vh; justify-content: center; align-items: center; background: var(--bg-color); }
-        
         #bottom-nav { position: fixed; bottom: 0; left: 0; right: 0; height: 65px; background: var(--surface); align-items: center; border-top: 1px solid var(--border-soft); z-index: 10000; box-shadow: 0 -4px 15px rgba(0,0,0,0.03); }
         .tab-btn { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; color: #94a3b8; font-size: 13px; font-weight: bold; transition: all 0.2s; border-right: 1px solid var(--border-soft); height:100%; background: var(--surface);}
         .tab-btn:last-child { border-right: none; }
         .tab-btn.active { color: var(--primary-medical); background: #f0f7ff; box-shadow: inset 0 4px 0 var(--primary-medical); }
         .tab-btn:hover:not(.active) { background: #f8fafc; color: #64748b; }
-
         .mode-btn { padding: 8px 16px; background: var(--surface); border: 1px solid var(--border-soft); border-radius: 20px; cursor: pointer; font-weight: bold; font-size: 13px; transition: 0.2s; box-shadow: var(--shadow-soft); color: #475569; height: 38px; box-sizing: border-box;}
         .mode-btn:hover { box-shadow: var(--shadow-hover); transform: translateY(-1px); }
         .mode-btn.active { background: var(--secondary-medical); color: white; border-color: var(--secondary-medical); }
         .print-btn-fixed { padding: 8px 20px; background: var(--primary-medical); color: #fff; border: none; border-radius: 20px; cursor: pointer; font-weight: bold; box-shadow: 0 4px 10px rgba(0,91,150,0.3); transition: 0.2s; height: 38px; box-sizing: border-box;}
         .print-btn-fixed:hover { background: #004c80; box-shadow: 0 6px 15px rgba(0,91,150,0.4); transform: translateY(-1px); }
-
         .user-profile { background: #f1f5f9; padding: 12px 15px; border-radius: 10px; margin-bottom: 20px; font-size: 13px; display: flex; justify-content: space-between; align-items: center; }
         .logout-btn { background: #cbd5e1; color: #333; border: none; padding: 4px 10px; border-radius: 6px; cursor: pointer; transition: 0.2s; font-weight: bold;}
         .logout-btn:hover { background: #94a3b8; color: white; }
-        
         .admin-toggle-btn { padding: 10px 12px; background: #e2e8f0; color: #475569; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; font-size: 13px; transition: 0.2s; }
         .admin-toggle-btn:hover { background: #cbd5e1; color: #1e293b; }
-        
         .search-box { width: 100%; padding: 12px; margin-bottom:12px; border: 1px solid var(--border-soft); border-radius: 8px; box-sizing: border-box; transition: 0.2s; background: var(--surface); font-size: 13px;}
         .search-box:focus { outline: none; border-color: var(--primary-medical); box-shadow: 0 0 0 3px rgba(0,91,150,0.15); }
-        
         .category-box { background: var(--surface); margin-bottom: 8px; border-radius: 8px; border: 1px solid var(--border-soft); overflow: hidden; transition: 0.2s; box-shadow: 0 2px 4px rgba(0,0,0,0.02);}
         .accordion-header { display: flex; justify-content: space-between; align-items: center; padding: 12px; cursor: pointer; user-select: none; transition: background 0.2s; }
         .accordion-header:hover { background: #f8fafc; }
@@ -872,111 +868,81 @@
         .accordion-content { display: none; }
         .category-box.open > .category-content { display: block; }
         .folder-box.open > .folder-content { display: block; padding-bottom: 5px; }
-        
         .toggle-icon { display: inline-block; transition: transform 0.3s ease; font-size: 10px; margin-right: 5px; color: #94a3b8; }
         .open > .accordion-header .toggle-icon { transform: rotate(90deg); color: var(--primary-medical); }
-
         .btn-icon { background: none; border: none; cursor: pointer; color: #94a3b8; font-size: 14px; padding: 4px; border-radius: 4px; transition: 0.2s; }
         .btn-icon:hover { background: #e2e8f0; color: #333; }
         .btn-danger-icon:hover { background: #ffe4e6; color: var(--danger-red); }
-
         .exercise-item { font-size: 13px; padding: 6px 12px 6px 36px; transition: 0.2s; border-radius: 4px; margin: 0 8px 2px 8px; }
         .draggable-item:hover { background: #f0f7ff; }
-        
         .exercise-title-text:focus { outline: 2px solid var(--primary-medical); background: #f0f7ff !important; }
-
         .custom-checkbox { width: 16px; height: 16px; cursor: pointer; accent-color: var(--primary-medical); }
-
         .sel-chip { display:inline-flex; align-items:center; background: #e0f2fe; color: #0369a1; padding: 6px 10px; border-radius: 12px; font-size: 12px; font-weight: bold; border: 1px solid #bae6fd; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
         .chip-del { margin-left: 6px; cursor: pointer; color: #0ea5e9; transition: 0.2s; font-size:14px; line-height:1;}
         .chip-del:hover { color: var(--danger-red); transform:scale(1.2);}
-
         .patient-group { margin-bottom: 12px; background: var(--surface); border-radius: 10px; border: 1px solid var(--border-soft); overflow: hidden; box-shadow: var(--shadow-soft); transition: 0.2s;}
         .patient-group:hover { box-shadow: var(--shadow-hover); }
         .patient-group-title { display: flex; justify-content: space-between; align-items: center; padding: 14px; background: var(--surface); border-bottom: 1px solid var(--border-soft); cursor: pointer; transition: 0.2s; }
         .patient-group-title:hover { background: #f8fafc; }
         .patient-group-content { display: none; padding: 5px 15px 15px 15px; }
         .patient-group-content.active { display: block; }
-        
         .visit-record { padding: 10px 0; border-bottom: 1px dashed var(--border-soft); }
         .visit-record:last-child { border-bottom: none; }
         .visit-date { font-size: 12px; color: #64748b; margin-bottom: 8px; }
-        
         .p-card-actions { display: flex; gap: 6px; }
         .p-btn-load { flex: 2; padding: 8px; font-size: 12px; cursor: pointer; background:#f1f5f9; border:none; border-radius:6px; font-weight:bold; color: #334155; transition: 0.2s;}
         .p-btn-load:hover { background: #e2e8f0; }
         .p-btn-del { flex: 1; padding: 8px; font-size: 12px; color: var(--danger-red); border: 1px solid #fda4af; background: #fff5f5; cursor: pointer; border-radius:6px; transition: 0.2s;}
         .p-btn-del:hover { background: var(--danger-red); color: white; }
-        
         .secret-memo { width: 100%; height: 90px; resize: none; padding: 12px; box-sizing: border-box; border: 1px solid #fde68a; border-radius: 8px; margin-bottom: 15px; background: #fffbeb; font-size: 13px; font-family: inherit; transition: 0.2s;}
         .secret-memo:focus { outline: none; border-color: #f59e0b; box-shadow: 0 0 0 3px rgba(245,158,11,0.15); }
         .show-more-btn { width: 100%; padding: 10px; background: #f1f5f9; border: none; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: bold; color: #64748b; margin-top: 10px; transition: 0.2s;}
         .show-more-btn:hover { background: #e2e8f0; color: #334155; }
-
         .t-item { display: flex; justify-content: space-between; align-items: center; padding: 12px; border: 1px solid var(--border-soft); font-size: 14px; background:var(--surface); margin-bottom:8px; border-radius:8px; box-shadow: 0 2px 5px rgba(0,0,0,0.02);}
         .t-item button { border: none; border-radius: 6px; padding: 6px 12px; cursor: pointer; font-size: 12px; font-weight:bold; transition: 0.2s;}
-        .btn-warning { background: #fef08a; color: #92400e; margin-right:5px; }
-        .btn-warning:hover { background: #fde047; }
-        .btn-danger { background: #ffe4e6; color: var(--danger-red); }
-        .btn-danger:hover { background: #fecdd3; }
-
+        .btn-warning { background: #fef08a; color: #92400e; margin-right:5px; } .btn-warning:hover { background: #fde047; }
+        .btn-danger { background: #ffe4e6; color: var(--danger-red); } .btn-danger:hover { background: #fecdd3; }
         .empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 50vh; width: 80%; border: 3px dashed #cbd5e1; border-radius: 20px; color: #94a3b8; text-align: center; margin-top: 50px; transition: 0.3s; background: var(--surface);}
         .empty-state.drag-over { background: #f0f7ff; border-color: var(--primary-medical); transform: scale(1.02); }
         .empty-icon { font-size: 60px; margin-bottom: 20px; opacity: 0.5; }
         .empty-state h2 { margin: 0 0 10px 0; color: #334155; font-size: 22px; }
         .empty-state p { margin: 0; font-size: 15px; }
-
         .a4-page { background: var(--surface); margin-bottom: 30px; padding: 8mm 12mm; box-sizing: border-box; display: flex; flex-direction: column; position: relative; box-shadow: 0 10px 25px rgba(0,0,0,0.08); width: 297mm; height: 210mm; transition: border 0.2s, transform 0.2s; border: 4px solid transparent; border-radius: 8px;}
         .a4-page.drag-over-top { border-top: 4px solid var(--primary-medical); transform: translateY(5px); }
         .a4-page.drag-over-bottom { border-bottom: 4px solid var(--primary-medical); transform: translateY(-5px); }
-
         .page-header { border-bottom: 3px solid var(--primary-medical); display: flex; justify-content: space-between; align-items: center; padding-bottom: 8px; margin-bottom: 5mm; }
         .page-header h1 { margin: 0; font-size: 24pt; letter-spacing: -1px; color: var(--primary-medical); }
         .patient-info { font-size: 13pt; color: #334155; display:flex; align-items:center; gap:8px;}
         .page-delete-btn { background: #ffe4e6; color: var(--danger-red); border: none; border-radius: 6px; width: 32px; height: 32px; font-size: 15px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: 0.2s;}
         .page-delete-btn:hover { background: var(--danger-red); color: white; transform: scale(1.1); }
-        
         .page-content { flex: 1; display: flex; gap: 20px; overflow: hidden; margin-bottom: 5mm;}
-        
         .img-wrap { flex: 50; border: 1px solid var(--border-soft); border-radius: 12px; overflow: hidden; display: flex; align-items: center; justify-content: center; background: #fff; position: relative; outline: none; transition: 0.2s;}
         .img-wrap:focus { border-color: var(--primary-medical); box-shadow: 0 0 0 4px rgba(0,91,150,0.1); }
-        
         .vertical-img-container { display: flex; flex-direction: column; width: 100%; height: 100%; }
         .split-img-item { flex: 1; position: relative; width: 100%; height: 50%; overflow: hidden; border-bottom: 1px solid var(--border-soft); background:#fff; display:flex; justify-content:center; align-items:center; }
         .split-img-item:last-child { border-bottom: none; }
         .split-img-item img { width: 100%; height: 100%; object-fit: fill; } 
-        
         .img-idx-badge { position: absolute; bottom: 10px; right: 10px; background: rgba(15,23,42,0.7); color: #fff; padding: 4px 10px; border-radius: 12px; font-size: 13px; font-weight: bold; backdrop-filter: blur(2px);}
-        
         .exercise-details { flex: 50; display: flex; flex-direction: column; gap: 10px; position: relative; }
-        
         .exercise-title-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
         .exercise-title-row h3 { margin: 0; font-size: 22pt; color: #1e293b; line-height: 1.2; flex: 1; word-break: keep-all; pointer-events: none;}
-        
         .save-btn { padding: 6px 14px; background: #d1fae5; color: #047857; border: 1px solid #34d399; border-radius: 6px; font-size: 13px; font-weight: bold; cursor: pointer; transition: 0.2s;}
         .save-btn:hover { background: var(--save-teal); color: white; }
-        
         .editable-desc { flex: 1; font-size: 12pt; line-height: 1.7; border: 1px solid var(--border-soft); padding: 15px; border-radius: 8px; overflow-y: auto; background: var(--surface); min-height: 0; transition: 0.2s; color: #334155;}
         .editable-desc:focus { outline: none; border-color: var(--primary-medical); box-shadow: 0 0 0 3px rgba(0,91,150,0.1); }
-        
-        /* 🌟 QR 코드 위치: 이미지 박스 우측 하단으로 이동 🌟 */
         .qr-box { position: absolute; bottom: 15px; right: 15px; background: var(--surface); padding: 6px; border-radius: 10px; border: 1px solid var(--border-soft); box-shadow: var(--shadow-hover); z-index: 10;}
         .qr-img { width: 80px; height: 80px; display: block; }
-        
         .page-footer { margin-top: auto; border-top: 1px solid var(--border-soft); padding-top: 10px; display: flex; justify-content: flex-end; align-items: center; pointer-events: none;}
         .page-num-indicator { font-size: 11pt; color: #94a3b8; font-weight: bold; }
-        
         .img-edit-btn { background: rgba(15,23,42,0.7); color: #fff; border: none; border-radius: 6px; font-size: 12px; padding: 8px 12px; cursor: pointer; font-weight:bold; pointer-events: auto; backdrop-filter: blur(2px); transition: 0.2s;}
         .img-edit-btn:hover { background: rgba(15,23,42,0.9); transform: scale(1.05); }
-        
         .landscape-mode .a4-page { width: 297mm; height: 210mm; }
-        
         .portrait-mode .a4-page { width: 210mm; height: 297mm; }
         .portrait-mode .page-content { flex-direction: column; gap: 15px; }
         .portrait-mode .img-wrap { height: 45%; width: 100%; flex: none; } 
         .portrait-mode .exercise-details { height: 55%; width: 100%; flex: none; display: flex; flex-direction: column; } 
         .portrait-mode .editable-desc { font-size: 13pt; min-height: 0; } 
-
+        .no-img-placeholder { display:flex; justify-content:center; align-items:center; width:100%; height:100%; color:#94a3b8; font-weight:bold; font-size:14px; background:#f1f5f9; text-align:center;}
         @media print {
             #sidebar, #patient-panel, #bottom-nav, .no-print, #login-overlay, .top-right-controls, #custom-modal-overlay { display: none !important; }
             body { background: #fff; }
